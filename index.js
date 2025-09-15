@@ -6,14 +6,15 @@ import { extension_settings, getContext, loadExtensionSettings } from "../../../
 //You'll likely need to import some other functions from the main script
 import { saveSettingsDebounced } from "../../../../script.js";
 
-// ----------------- 初始化按钮与面板 -----------------  
+// ----------------- 初始化按钮与面板 ----------------- 
+ 
 const starBtn = document.createElement('button');  
 starBtn.id = 'friend-circle-btn';  
 starBtn.textContent = '🌟';  
 Object.assign(starBtn.style, {  
     position: 'fixed',  
-    right: '12px',  
-    top: '300px',  
+    right: '0px',  
+    top: '50px',  
     transform: 'translateY(-50%)',  
     fontSize: '22px',  
     background: 'transparent',  
@@ -22,16 +23,15 @@ Object.assign(starBtn.style, {
     zIndex: 9999  
 });  
 document.body.appendChild(starBtn);  
-  
 const panel = document.createElement('div');  
 panel.id = 'friend-circle-panel';  
 Object.assign(panel.style, {  
     position: 'fixed',  
-    right: '60px',  
-    top: '300px',  
+    right: '20px',  
+    top: '380px',  
     transform: 'translateY(-50%)',  
-    width: '300px',  
-    maxHeight: '400px',  
+    width: '320px',  
+    maxHeight: '580px',  
     overflowY: 'auto',  
     background: '#fff',  
     border: '1px solid #ccc',  
@@ -337,7 +337,7 @@ userPromptModule.id = 'user-prompt-module';
 Object.assign(userPromptModule.style, {  
     marginTop: '28px',  
     display: 'none',  
-    maxHeight: '200px',  
+    maxHeight: '260px',  
     overflowY: 'auto',  
     borderTop: '1px solid #ccc',  
     paddingTop: '6px'  
@@ -346,12 +346,13 @@ panelContent.appendChild(userPromptModule);
 
 userPromptModule.innerHTML = `  
     <div style="margin-bottom:4px;">  
+        <input type="text" id="tag-filter-input" placeholder="按标签筛选..." style="width:100%; margin-bottom:6px;">  
         <input type="text" id="new-prompt-input" placeholder="输入自定义提示词" style="width:70%">  
         <button id="add-prompt-btn">添加</button>  
     </div>  
-    <div id="prompt-list-container" style="max-height:140px; overflow-y:auto;"></div>  
+    <div id="prompt-list-container" style="max-height:180px; overflow-y:auto;"></div>  
     <button id="save-prompts-btn" style="margin-top:4px;">保存提示词</button>  
-`;
+`;  
 
 promptBtn.addEventListener('click', () => {  
     userPromptModule.style.display = userPromptModule.style.display === 'none' ? 'block' : 'none';  
@@ -361,7 +362,8 @@ promptBtn.addEventListener('click', () => {
 const PROMPTS_KEY = 'friendCircleUserPrompts';  
 
 // 全局内存数组，保持最新状态
-let friendCirclePrompts = [];
+let friendCirclePrompts = [];  
+let promptTagFilter = "";
 
 // 从 localStorage 读取
 function loadUserPrompts() {  
@@ -374,11 +376,25 @@ function loadUserPrompts() {
 function renderPromptList() {  
     const container = document.getElementById('prompt-list-container');  
     container.innerHTML = '';  
+
     friendCirclePrompts.forEach((p, idx) => {  
+        // 标签过滤逻辑
+        if (promptTagFilter) {  
+            const match = (p.tags || []).some(tag => tag.toLowerCase().includes(promptTagFilter));  
+            if (!match) return;  
+        }  
+
         const div = document.createElement('div');  
         div.style.display = 'flex';  
-        div.style.alignItems = 'center';  
-        div.style.marginBottom = '2px';  
+        div.style.flexDirection = 'column';  
+        div.style.marginBottom = '4px';  
+        div.style.borderBottom = '1px solid #eee';  
+        div.style.paddingBottom = '2px';  
+
+        // 第一行（checkbox + 文本 + 按钮）
+        const row = document.createElement('div');  
+        row.style.display = 'flex';  
+        row.style.alignItems = 'center';  
 
         const checkbox = document.createElement('input');  
         checkbox.type = 'checkbox';  
@@ -396,6 +412,45 @@ function renderPromptList() {
         span.style.textOverflow = 'ellipsis';  
         span.style.whiteSpace = 'nowrap';  
 
+        // 编辑按钮
+        const editBtn = document.createElement('button');  
+        editBtn.textContent = '✏️';  
+        editBtn.style.marginLeft = '4px';  
+        editBtn.addEventListener('click', () => {  
+            const input = document.createElement('input');  
+            input.type = 'text';  
+            input.value = p.text;  
+            input.style.flex = '1';  
+            row.replaceChild(input, span);  
+
+            input.addEventListener('blur', () => {  
+                const newText = input.value.trim();  
+                if (newText) {  
+                    friendCirclePrompts[idx].text = newText;  
+                    localStorage.setItem(PROMPTS_KEY, JSON.stringify(friendCirclePrompts));  
+                }  
+                renderPromptList();  
+            });  
+            input.focus();  
+        });  
+
+        // 标签按钮
+        const tagBtn = document.createElement('button');  
+        tagBtn.textContent = '🏷️';  
+        tagBtn.style.marginLeft = '4px';  
+        tagBtn.addEventListener('click', () => {  
+            const newTag = prompt('输入标签:');  
+            if (newTag) {  
+                if (!Array.isArray(friendCirclePrompts[idx].tags)) {  
+                    friendCirclePrompts[idx].tags = [];  
+                }  
+                friendCirclePrompts[idx].tags.push(newTag);  
+                localStorage.setItem(PROMPTS_KEY, JSON.stringify(friendCirclePrompts));  
+                renderPromptList();  
+            }  
+        });  
+
+        // 删除按钮
         const delBtn = document.createElement('button');  
         delBtn.textContent = '❌';  
         delBtn.style.marginLeft = '4px';  
@@ -405,9 +460,42 @@ function renderPromptList() {
             renderPromptList();  
         });  
 
-        div.appendChild(checkbox);  
-        div.appendChild(span);  
-        div.appendChild(delBtn);  
+        row.appendChild(checkbox);  
+        row.appendChild(span);  
+        row.appendChild(editBtn);  
+        row.appendChild(tagBtn);  
+        row.appendChild(delBtn);  
+
+        div.appendChild(row);  
+
+        // 标签行
+        if (p.tags && p.tags.length > 0) {  
+            const tagsRow = document.createElement('div');  
+            tagsRow.style.marginLeft = '20px';  
+            tagsRow.style.marginTop = '2px';  
+
+            p.tags.forEach((t, tIdx) => {  
+                const tagEl = document.createElement('span');  
+                tagEl.textContent = t;  
+                tagEl.style.display = 'inline-block';  
+                tagEl.style.padding = '2px 6px';  
+                tagEl.style.margin = '0 4px 4px 0';  
+                tagEl.style.fontSize = '12px';  
+                tagEl.style.borderRadius = '10px';  
+                tagEl.style.background = '#e0e0e0';  
+                tagEl.style.cursor = 'pointer';  
+                tagEl.title = '点击删除标签';  
+                tagEl.addEventListener('click', () => {  
+                    friendCirclePrompts[idx].tags.splice(tIdx, 1);  
+                    localStorage.setItem(PROMPTS_KEY, JSON.stringify(friendCirclePrompts));  
+                    renderPromptList();  
+                });  
+                tagsRow.appendChild(tagEl);  
+            });  
+
+            div.appendChild(tagsRow);  
+        }  
+
         container.appendChild(div);  
     });  
 }  
@@ -417,7 +505,7 @@ document.getElementById('add-prompt-btn').addEventListener('click', () => {
     const input = document.getElementById('new-prompt-input');  
     const val = input.value.trim();  
     if (!val) return alert('请输入提示词');  
-    friendCirclePrompts.push({ text: val, enabled: true });  
+    friendCirclePrompts.push({ text: val, enabled: true, tags: [] });  
     localStorage.setItem(PROMPTS_KEY, JSON.stringify(friendCirclePrompts));  
     input.value = '';  
     renderPromptList();  
@@ -430,10 +518,16 @@ document.getElementById('save-prompts-btn').addEventListener('click', () => {
     debugLog('保存用户自定义提示词', friendCirclePrompts);  
 });  
 
+// 标签过滤输入
+document.getElementById('tag-filter-input').addEventListener('input', (e) => {  
+    promptTagFilter = e.target.value.trim().toLowerCase();  
+    renderPromptList();  
+});  
+
 // 获取启用的提示词（朋友圈生成模块调用）
-function getEnabledPrompts() {
-    return friendCirclePrompts.filter(p => p.enabled).map(p => p.text);
-}
+function getEnabledPrompts() {  
+    return friendCirclePrompts.filter(p => p.enabled).map(p => p.text);  
+}  
 
 // 初始化
 loadUserPrompts();  
@@ -446,7 +540,7 @@ sliderContainer.style.marginBottom = '6px';
 
 const sliderLabel = document.createElement('span');
 sliderLabel.textContent = '读取聊天条数: ';
-sliderLabel.style.marginRight = '6px';
+sliderLabel.style.marginRight = '10px';
 
 const sliderValue = document.createElement('span');
 sliderValue.textContent = '10';
