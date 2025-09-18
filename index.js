@@ -632,7 +632,7 @@ function showGenPanel() {
             }  
 
             outputContainer.textContent = output;  
-            debugLog('生成结果:', output);  
+            debugLog('生成结果输出到面板:', output);  // ✅ 输出到调试面板  
 
         } catch (e) {  
             console.error('生成朋友圈失败:', e);  
@@ -640,6 +640,57 @@ function showGenPanel() {
             debugLog('生成失败', e.message || e);  
         }  
     }  
+
+    // ---------- 自动化模式 ----------
+    let autoMode = false;
+    let lastMessageCount = 0;
+    let autoObserver = null;
+
+    function toggleAutoMode() {
+        autoMode = !autoMode;
+        const autoBtn = document.getElementById('sp-gen-auto');
+
+        if (autoMode) {
+            autoBtn.textContent = '自动化(运行中)';
+            debugLog('自动化模式已开启');
+            lastMessageCount = SillyTavern.getContext()?.chat?.length || 0;
+
+            autoObserver = new MutationObserver(() => {
+                const ctx = SillyTavern.getContext();
+                if (!ctx || !Array.isArray(ctx.chat)) return;
+
+                if (ctx.chat.length > lastMessageCount) {
+                    const newMsg = ctx.chat[ctx.chat.length - 1];
+                    lastMessageCount = ctx.chat.length;
+
+                    // 检测是不是非用户消息
+                    if (newMsg && !newMsg.is_user && newMsg.mes) {
+                        debugLog('检测到新AI消息，触发自动生成');
+                        getLastMessages().then(lastMessages => {
+                            const selectedChat = lastMessages.length > 0 ? lastMessages : [];
+                            generateFriendCircle(selectedChat, ['']);
+                        });
+                    }
+                }
+            });
+
+            // 监听聊天区域变化
+            const chatContainer = document.getElementById('chat');
+            if (chatContainer) {
+                autoObserver.observe(chatContainer, { childList: true, subtree: true });
+            } else {
+                debugLog('未找到聊天容器 #chat，无法自动化');
+            }
+
+        } else {
+            autoBtn.textContent = '自动化';
+            debugLog('自动化模式已关闭');
+            if (autoObserver) {
+                autoObserver.disconnect();
+                autoObserver = null;
+            }
+        }
+    }
 
     // ---------- 按钮绑定 ----------  
     document.getElementById('sp-gen-now').addEventListener('click', async () => {  
@@ -696,9 +747,8 @@ function showGenPanel() {
         if (sendBtn) sendBtn.click();  
     });  
 
-    document.getElementById('sp-gen-auto').addEventListener('click', () => {  
-        alert('自动化功能待实现');  
-    });  
+    // 自动化按钮绑定  
+    document.getElementById('sp-gen-auto').addEventListener('click', toggleAutoMode);  
 }
       // 面板按钮绑定
       panel.querySelectorAll('.sp-btn').forEach(btn => {
