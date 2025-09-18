@@ -451,15 +451,15 @@ document.getElementById("api-test-btn").addEventListener("click", async () => {
    function showChatConfig() {
     const content = document.getElementById('sp-content-area');
     content.innerHTML = `
-        <div style="padding:12px; background:#f9f9f9; border-radius:8px; max-width:400px; margin:0 auto;">
-            <div id="sp-chat-slider-container" style="display:flex; align-items:center; margin-bottom:12px;">
-                <span style="margin-right:10px;">读取聊天条数: </span>
-                <input type="range" id="sp-chat-slider" min="0" max="20" value="10" style="flex:1;">
-                <span id="sp-chat-slider-value" style="margin-left:4px;">10</span>
-            </div>
-            <div id="sp-chat-messages" style="max-height:260px; overflow-y:auto; border-top:1px solid #ccc; padding-top:6px;"></div>
+    <div style="padding:12px; background:#ffffff; color:#000000; border-radius:8px; max-width:400px; margin:0 auto;">
+        <div id="sp-chat-slider-container" style="display:flex; align-items:center; margin-bottom:12px;">
+            <span style="margin-right:10px;">读取聊天条数: </span>
+            <input type="range" id="sp-chat-slider" min="0" max="20" value="10" style="flex:1;">
+            <span id="sp-chat-slider-value" style="margin-left:4px;">10</span>
         </div>
-    `;
+        <div id="sp-chat-messages" style="max-height:260px; overflow-y:auto; border-top:1px solid #ccc; padding-top:6px;"></div>
+    </div>
+`;
 
     const sliderInput = document.getElementById('sp-chat-slider');
     const sliderValue = document.getElementById('sp-chat-slider-value');
