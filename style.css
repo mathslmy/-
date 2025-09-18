@@ -1,87 +1,71 @@
-/* ===========================
-   按钮样式
-   =========================== */
-#friend-circle-btn {
-    position: fixed;
-    top: 20px;            /* 改成距离顶部 */
-    right: 20px;          /* 右侧固定 */
-    font-size: 22px;
-    background: transparent;
-    border: none;
-    cursor: pointer;
-    z-index: 9999;
+#star-fab {
+  position: fixed;
+  top: 20px;
+  right: 10px;
+  font-size: 22px;
+  cursor: pointer;
+  z-index: 9999;
 }
 
-/* ===========================
-   面板样式
-   =========================== */
-.friend-circle-panel {
-    position: fixed;
-    top: 70px;            /* 面板从顶部偏移 */
-    right: 20px;          /* 靠右显示 */
-    width: 320px;
-    max-height: 80vh;     /* 不会超出屏幕高度 */
-    background-color: #fff;
-    border: 1px solid #ccc;
-    border-radius: 10px;
-    box-shadow: 0 5px 15px rgba(0,0,0,0.3);
-    padding: 12px;
-    overflow-y: auto;      /* 超出内容可滚动 */
-    z-index: 9998;
-    font-family: Arial, sans-serif;
+#star-panel {
+  position: fixed;
+  top: 60px;
+  right: 20px;
+  width: 320px;
+  background: #1e1e2e;
+  color: #fff;
+  border: 1px solid #444;
+  border-radius: 8px;
+  padding: 10px;
+  display: none;
+  z-index: 9999;
 }
 
-/* 隐藏面板 */
-.friend-circle-panel.hidden {
-    display: none;
+.sp-header {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 10px;
 }
 
-/* 面板标题和按钮布局 */
-.friend-circle-panel h3,
-.friend-circle-panel h4 {
-    margin: 0 0 8px 0;
+.sp-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 6px;
+  margin-bottom: 10px;
 }
 
-.friend-circle-panel button {
-    cursor: pointer;
-    padding: 4px 8px;
-    border-radius: 4px;
+.sp-btn {
+  background: #333;
+  padding: 6px;
+  border-radius: 6px;
+  cursor: pointer;
+  text-align: center;
+}
+.sp-btn:hover {
+  background: #555;
 }
 
-/* 输入框和选择框样式 */
-.friend-circle-panel input[type="text"],
-.friend-circle-panel select {
-    width: 100%;
-    padding: 6px 8px;
-    margin: 4px 0 8px 0;
-    border: 1px solid #ccc;
-    border-radius: 4px;
-    box-sizing: border-box;
+.sp-subpanel {
+  background: #222;
+  padding: 8px;
+  border-radius: 6px;
+  min-height: 120px;
+  margin-bottom: 10px;
 }
 
-/* 模型刷新按钮 */
-#refresh-models {
-    font-size: 12px;
-    padding: 2px 6px;
-    margin-left: 4px;
+.sp-debug {
+  height: 80px;
+  background: #111;
+  border: 1px solid #333;
+  padding: 5px;
+  font-size: 12px;
+  overflow-y: auto;
 }
 
-/* 状态提示文字 */
-#api-status {
-    font-size: 14px;
-}
-
-/* API面板与朋友圈内容切换 */
-#friend-circle-content,
-#api-panel {
-    transition: all 0.2s ease;
-}
-
-/* 关闭按钮 */
-#friend-circle-close {
-    width: 100%;
-    margin-top: 12px;
-    padding: 6px 0;
-    background-color: #eee;
-    border: 1px solid #ccc;
+.sp-output {
+  margin-top: 8px;
+  background: #111;
+  padding: 5px;
+  min-height: 60px;
+  border: 1px solid #333;
 }
