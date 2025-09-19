@@ -39,9 +39,21 @@ fab.id = 'star-fab';
 fab.title = MODULE_NAME;
 fab.innerText = '🌟';
 fab.style.position = 'fixed';
-fab.style.top = localStorage.getItem('starFabTop') || '20px';
-fab.style.right = localStorage.getItem('starFabRight') || '20px';
-fab.style.zIndex = '9999';
+
+// 如果有存储位置，用存储的位置；否则默认居中
+const savedTop = localStorage.getItem('starFabTop');
+const savedRight = localStorage.getItem('starFabRight');
+if (savedTop && savedRight) {
+  fab.style.top = savedTop;
+  fab.style.right = savedRight;
+} else {
+  const centerTop = (window.innerHeight / 2 - 16) + 'px';   // 32px按钮高度/2=16
+  const centerRight = (window.innerWidth / 2 - 16) + 'px';  // 32px按钮宽度/2=16
+  fab.style.top = centerTop;
+  fab.style.right = centerRight;
+}
+
+fab.style.zIndex = '99999';
 fab.style.cursor = 'grab';
 fab.style.userSelect = 'none';
 fab.style.fontSize = '22px';
