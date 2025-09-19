@@ -1,5 +1,5 @@
 import { extension_settings, getContext } from "../../../extensions.js";
-import { saveSettingsDebounced } from "../../../../script.js";
+import { saveSettingsDebounced,saveChat } from "../../../../script.js";
 
 (function () {
   const MODULE_NAME = '星标拓展';
@@ -724,16 +724,35 @@ function showGenPanel() {
         const mesTextEl = aiMes.querySelector('.mes_text');  
         if (!mesTextEl) return alert('AI消息中未找到 mes_text');  
 
+        // --- 更新 DOM ---
         mesTextEl.textContent += '\n' + texts;  
 
-        const memArray = window.chat || SillyTavern.getContext()?.chat;  
-        if (!memArray) return;  
+        // --- 更新内存数据 ---
+        const ctx = SillyTavern.getContext();  
+        if (!ctx || !Array.isArray(ctx.chat)) return alert('未找到聊天上下文');  
 
-        const memMsg = [...memArray].reverse().find(m => m.mes);  
-        if (!memMsg) return;  
+        const msgIndex = [...ctx.chat].reverse().findIndex(m => m && !m.is_user && m.mes);  
+        if (msgIndex < 0) return alert('未找到内存中的AI消息');  
 
-        memMsg.mes += '\n' + texts;  
-    });  
+        const realIndex = ctx.chat.length - 1 - msgIndex;  
+        ctx.chat[realIndex].mes += '\n' + texts;  
+
+        // --- 持久化保存 ---
+        if (typeof SillyTavern.saveChat === 'function') {  
+            SillyTavern.saveChat();  
+        }  
+
+        // --- 模拟触发编辑事件，让其他脚本刷新 ---
+        mesTextEl.dispatchEvent(new Event('input', { bubbles: true }));  
+        mesTextEl.dispatchEvent(new Event('change', { bubbles: true }));  
+
+        // 如果全局有 eventSource，广播一个自定义事件
+        if (window.eventSource && typeof window.eventSource.emit === 'function') {
+            window.eventSource.emit("messageUpdated", ctx.chat[realIndex], realIndex);
+        }  
+
+        debugLog('注入聊天成功，已持久化并触发刷新');  
+    });
 
     document.getElementById('sp-gen-inject-swipe').addEventListener('click', () => {  
         const texts = outputContainer.textContent.trim();  
