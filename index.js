@@ -33,12 +33,82 @@ import { saveSettingsDebounced,saveChat } from "../../../../script.js";
       // 防重复
       if (document.getElementById('star-fab')) return;
 
-      // 🌟按钮
-      const fab = document.createElement('div');
-      fab.id = 'star-fab';
-      fab.title = MODULE_NAME;
-      fab.innerText = '🌟';
-      document.body.appendChild(fab);
+     // 🌟按钮
+const fab = document.createElement('div');
+fab.id = 'star-fab';
+fab.title = MODULE_NAME;
+fab.innerText = '🌟';
+fab.style.position = 'fixed';
+fab.style.top = localStorage.getItem('starFabTop') || '20px';
+fab.style.right = localStorage.getItem('starFabRight') || '20px';
+fab.style.zIndex = '9999';
+fab.style.cursor = 'grab';
+fab.style.userSelect = 'none';
+fab.style.fontSize = '22px';
+fab.style.lineHeight = '28px';
+fab.style.width = '32px';
+fab.style.height = '32px';
+fab.style.textAlign = 'center';
+fab.style.borderRadius = '50%';
+fab.style.background = 'transparent'; // 背景透明
+fab.style.boxShadow = 'none'; // 去掉阴影
+document.body.appendChild(fab);
+
+// 拖动逻辑
+(function enableFabDrag() {
+  let isDragging = false;
+  let startX, startY, startTop, startRight;
+
+  function onMove(e) {
+    if (!isDragging) return;
+    e.preventDefault();
+
+    const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+    const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+
+    const dx = clientX - startX;
+    const dy = clientY - startY;
+
+    // 计算新位置（右上角模式：改变 top 和 right）
+    let newTop = startTop + dy;
+    let newRight = startRight - dx;
+
+    // 限制范围（不能拖出屏幕）
+    const maxTop = window.innerHeight - fab.offsetHeight;
+    const maxRight = window.innerWidth - fab.offsetWidth;
+    newTop = Math.max(0, Math.min(maxTop, newTop));
+    newRight = Math.max(0, Math.min(maxRight, newRight));
+
+    fab.style.top = newTop + 'px';
+    fab.style.right = newRight + 'px';
+  }
+
+  function onEnd() {
+    if (!isDragging) return;
+    isDragging = false;
+    fab.style.cursor = 'grab';
+    // 保存位置
+    localStorage.setItem('starFabTop', fab.style.top);
+    localStorage.setItem('starFabRight', fab.style.right);
+  }
+
+  function onStart(e) {
+    isDragging = true;
+    startX = e.touches ? e.touches[0].clientX : e.clientX;
+    startY = e.touches ? e.touches[0].clientY : e.clientY;
+    startTop = parseInt(fab.style.top, 10);
+    startRight = parseInt(fab.style.right, 10);
+    fab.style.cursor = 'grabbing';
+  }
+
+  // 绑定事件（PC + 手机）
+  fab.addEventListener('mousedown', onStart);
+  fab.addEventListener('touchstart', onStart);
+  document.addEventListener('mousemove', onMove);
+  document.addEventListener('touchmove', onMove, { passive: false });
+  document.addEventListener('mouseup', onEnd);
+  document.addEventListener('touchend', onEnd);
+})();
 
       // 主面板
       const panel = document.createElement('div');
