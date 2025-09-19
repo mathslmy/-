@@ -705,53 +705,62 @@ function showGenPanel() {
         }  
     });  
 
-    document.getElementById('sp-gen-inject-input').addEventListener('click', () => {  
-        const texts = outputContainer.textContent.trim();  
-        const inputEl = document.getElementById('send_textarea');  
-        if (inputEl) { inputEl.value = texts; inputEl.focus(); }       
-        else alert('未找到输入框 send_textarea');  
-    });  
+    // ---------- 工具函数：模拟消息编辑 ----------
+    function simulateEditMessage(mesElement, newText) {
+        if (!mesElement) return;
 
+        // 找到编辑按钮
+        const editBtn = mesElement.querySelector('.mes_edit');
+        if (!editBtn) {
+            debugLog('未找到编辑按钮 mes_edit');
+            return;
+        }
+
+        // 1. 模拟点击 "小铅笔"
+        editBtn.click();
+
+        // 2. 找到编辑文本框
+        const textarea = mesElement.querySelector('.edit_textarea');
+        if (!textarea) {
+            debugLog('未找到编辑文本框 edit_textarea');
+            return;
+        }
+
+        textarea.value = newText;
+        textarea.dispatchEvent(new Event('input', { bubbles: true })); // 触发输入事件
+
+        // 3. 找到 "完成" 按钮
+        const doneBtn = mesElement.querySelector('.mes_edit_done');
+        if (!doneBtn) {
+            debugLog('未找到完成按钮 mes_edit_done');
+            return;
+        }
+
+        // 4. 模拟点击 "完成"
+        doneBtn.click();
+    }
+
+    // ---------- 注入聊天（持久化 + 触发渲染） ----------
     document.getElementById('sp-gen-inject-chat').addEventListener('click', () => {  
         const texts = outputContainer.textContent.trim();  
         if (!texts) return alert('生成内容为空');  
         const allMes = Array.from(document.querySelectorAll('.mes'));  
         if (allMes.length === 0) return alert('未找到任何消息');  
 
+        // 找最后一条 AI 消息
         let aiMes = [...allMes].reverse().find(m => !m.classList.contains('user'));  
         if (!aiMes) return alert('未找到AI消息');  
 
         const mesTextEl = aiMes.querySelector('.mes_text');  
         if (!mesTextEl) return alert('AI消息中未找到 mes_text');  
 
-        // --- 更新 DOM ---
-        mesTextEl.textContent += '\n' + texts;  
+        // 拼接新内容
+        const newContent = mesTextEl.textContent + '\n' + texts;
 
-        // --- 更新内存数据 ---
-        const ctx = SillyTavern.getContext();  
-        if (!ctx || !Array.isArray(ctx.chat)) return alert('未找到聊天上下文');  
+        // 用模拟编辑来触发
+        simulateEditMessage(aiMes, newContent);
 
-        const msgIndex = [...ctx.chat].reverse().findIndex(m => m && !m.is_user && m.mes);  
-        if (msgIndex < 0) return alert('未找到内存中的AI消息');  
-
-        const realIndex = ctx.chat.length - 1 - msgIndex;  
-        ctx.chat[realIndex].mes += '\n' + texts;  
-
-        // --- 持久化保存 ---
-        if (typeof SillyTavern.saveChat === 'function') {  
-            SillyTavern.saveChat();  
-        }  
-
-        // --- 模拟触发编辑事件，让其他脚本刷新 ---
-        mesTextEl.dispatchEvent(new Event('input', { bubbles: true }));  
-        mesTextEl.dispatchEvent(new Event('change', { bubbles: true }));  
-
-        // 如果全局有 eventSource，广播一个自定义事件
-        if (window.eventSource && typeof window.eventSource.emit === 'function') {
-            window.eventSource.emit("messageUpdated", ctx.chat[realIndex], realIndex);
-        }  
-
-        debugLog('注入聊天成功，已持久化并触发刷新');  
+        debugLog('注入聊天成功，并模拟了编辑完成（可被其他脚本监听渲染）');
     });
 
     document.getElementById('sp-gen-inject-swipe').addEventListener('click', () => {  
