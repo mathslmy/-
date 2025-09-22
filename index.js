@@ -862,27 +862,42 @@ function showGenPanel() {
     }
 
     // ---------- 注入聊天（持久化 + 触发渲染） ----------
-    document.getElementById('sp-gen-inject-chat').addEventListener('click', () => {  
-        const texts = outputContainer.textContent.trim();  
-        if (!texts) return alert('生成内容为空');  
-        const allMes = Array.from(document.querySelectorAll('.mes'));  
-        if (allMes.length === 0) return alert('未找到任何消息');  
+    document.getElementById('sp-gen-inject-chat').addEventListener('click', () => {
+    const texts = outputContainer.textContent.trim();
+    if (!texts) return alert('生成内容为空');
 
-        // 找最后一条 AI 消息
-        let aiMes = [...allMes].reverse().find(m => !m.classList.contains('user'));  
-        if (!aiMes) return alert('未找到AI消息');  
+    // 从 ST 内存里拿上下文
+    const ctx = SillyTavern.getContext();
+    if (!ctx || !ctx.chat || ctx.chat.length === 0) {
+        return alert('未找到任何内存消息');
+    }
 
-        const mesTextEl = aiMes.querySelector('.mes_text');  
-        if (!mesTextEl) return alert('AI消息中未找到 mes_text');  
+    // 找最后一条 AI 内存消息
+    const lastAiMes = [...ctx.chat].reverse().find(m => m.is_user === false);
+    if (!lastAiMes) return alert('未找到内存中的 AI 消息');
 
-        // 拼接新内容
-        const newContent = mesTextEl.textContent + '\n' + texts;
+    // 从 DOM 获取消息列表
+    const allMes = Array.from(document.querySelectorAll('.mes'));
+    if (allMes.length === 0) return alert('未找到任何 DOM 消息');
 
-        // 用模拟编辑来触发
-        simulateEditMessage(aiMes, newContent);
+    // 找最后一条 AI DOM 消息
+    const aiMes = [...allMes].reverse().find(m => !m.classList.contains('user'));
+    if (!aiMes) return alert('未找到 DOM 中的 AI 消息');
 
-        debugLog('注入聊天成功，并模拟了编辑完成（可被其他脚本监听渲染）');
-    });
+    const mesTextEl = aiMes.querySelector('.mes_text');
+    if (!mesTextEl) return alert('AI DOM 消息中未找到 mes_text');
+
+    // 原始消息文本（从内存里拿）
+    const oldRaw = lastAiMes.mes;
+
+    // 拼接新内容（旧 + 新）
+    const newContent = oldRaw + '\n' + texts;
+
+    // 用模拟编辑来触发 DOM 更新
+    simulateEditMessage(aiMes, newContent);
+
+    debugLog('注入聊天成功，并模拟了编辑完成（可被其他脚本监听渲染）');
+});
 
     document.getElementById('sp-gen-inject-swipe').addEventListener('click', () => {  
         const texts = outputContainer.textContent.trim();  
