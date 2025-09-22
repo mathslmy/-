@@ -530,78 +530,167 @@ document.getElementById("api-test-btn").addEventListener("click", async () => {
     debugLog('进入 提示词配置面板');
 }
 
-   function showChatConfig() {  
-    const content = document.getElementById('sp-content-area');  
-    content.innerHTML = `  
-    <div style="padding:12px; background:#ffffff; color:#000000; border-radius:8px; max-width:400px; margin:0 auto;">  
-        <div id="sp-chat-slider-container" style="display:flex; align-items:center; margin-bottom:12px;">  
-            <span style="margin-right:10px;">读取聊天条数: </span>  
-            <input type="range" id="sp-chat-slider" min="0" max="20" value="10" style="flex:1;">  
-            <span id="sp-chat-slider-value" style="margin-left:4px;">10</span>  
-        </div>  
-        <div id="sp-chat-messages" style="max-height:260px; overflow-y:auto; border-top:1px solid #ccc; padding-top:6px;"></div>  
-    </div>  
-`;  
+ function showChatConfig() {
+    const content = document.getElementById('sp-content-area');
+    content.innerHTML = `
+    <div style="padding:12px; background:#ffffff; color:#000000; border-radius:8px; max-width:500px; margin:0 auto;">
+        <div id="sp-chat-slider-container" style="display:flex; align-items:center; margin-bottom:12px;">
+            <span style="margin-right:10px;">读取聊天条数: </span>
+            <input type="range" id="sp-chat-slider" min="0" max="20" value="10" style="flex:1;">
+            <span id="sp-chat-slider-value" style="margin-left:4px;">10</span>
+        </div>
 
-    const sliderInput = document.getElementById('sp-chat-slider');  
-    const sliderValue = document.getElementById('sp-chat-slider-value');  
-    const messagesContainer = document.getElementById('sp-chat-messages');  
+        <div style="margin-bottom:12px;">
+            <h4>正则修剪列表</h4>
+            <div style="display:flex; gap:6px; margin-bottom:6px;">
+                <input type="text" id="sp-new-regex" placeholder="<example></example>" style="flex:1;">
+                <button id="sp-add-regex">添加</button>
+            </div>
+            <div id="sp-regex-list" style="max-height:200px; overflow-y:auto; border:1px solid #ccc; padding:6px; border-radius:6px;"></div>
+        </div>
+    </div>
+    `;
 
-    // 初始化 slider 值（持久化）  
-    const savedCount = localStorage.getItem('friendCircleChatCount');  
-    if (savedCount) {  
-        sliderInput.value = savedCount;  
-        sliderValue.textContent = savedCount;  
-    }  
+    const sliderInput = document.getElementById('sp-chat-slider');
+    const sliderValue = document.getElementById('sp-chat-slider-value');
 
-    sliderInput.addEventListener('input', () => {  
-        sliderValue.textContent = sliderInput.value;  
-        localStorage.setItem('friendCircleChatCount', sliderInput.value); // 保存选择  
-        updateChatMessages();  
-    });  
+    // 初始化 slider 值（持久化）
+    const savedCount = localStorage.getItem('friendCircleChatCount');
+    if (savedCount) {
+        sliderInput.value = savedCount;
+        sliderValue.textContent = savedCount;
+    }
 
-    async function getLastMessages() {  
-        try {  
-            const ctx = SillyTavern.getContext();  
-            if (!ctx || !Array.isArray(ctx.chat)) {  
-                debugLog('获取聊天失败', ctx);  
-                return [];  
-            }  
+    sliderInput.addEventListener('input', () => {
+        sliderValue.textContent = sliderInput.value;
+        localStorage.setItem('friendCircleChatCount', sliderInput.value);
+        debugLog(`已设置读取聊天条数为 ${sliderInput.value}`);
+        fetchAndCountMessages();
+    });
 
-            // 使用保存的条数  
-            const count = parseInt(localStorage.getItem('friendCircleChatCount') || sliderInput.value || 10, 10);  
-            const lastMessages = ctx.chat.slice(-count);  
+    // ---------------- 正则列表相关 ----------------
+    const regexListContainer = document.getElementById('sp-regex-list');
+    const addRegexInput = document.getElementById('sp-new-regex');
+    const addRegexButton = document.getElementById('sp-add-regex');
 
-            const textMessages = lastMessages.map((msg, i) => ({  
-                index: ctx.chat.length - lastMessages.length + i,  
-                text: msg.mes || ""  
-            })).filter(m => m.text);  
+    function loadRegexList() {
+        const list = JSON.parse(localStorage.getItem('friendCircleRegexList') || '[]');
+        regexListContainer.innerHTML = '';
+        list.forEach((item, idx) => {
+            const div = document.createElement('div');
+            div.style.display = 'flex';
+            div.style.alignItems = 'center';
+            div.style.marginBottom = '4px';
+            div.style.gap = '4px';
 
-            localStorage.setItem("lastChatMessages", JSON.stringify(textMessages));  
-            debugLog(`提取到最后 ${count} 条消息`, textMessages);  
-            return textMessages;  
-        } catch (e) {  
-            debugLog('getLastMessages 出错', e.message || e);  
-            return [];  
-        }  
-    }  
+            const checkbox = document.createElement('input');
+            checkbox.type = 'checkbox';
+            checkbox.checked = item.enabled;
+            checkbox.addEventListener('change', () => {
+                list[idx].enabled = checkbox.checked;
+                localStorage.setItem('friendCircleRegexList', JSON.stringify(list));
+            });
 
-    async function updateChatMessages() {  
-        const messages = await getLastMessages();  
-        messagesContainer.innerHTML = '';  
-        messages.forEach(m => {  
-            const div = document.createElement('div');  
-            div.textContent = `[${m.index}] ${m.text}`;  
-            div.style.padding = '2px 0';  
-            div.style.borderBottom = '1px solid #eee';  
-            messagesContainer.appendChild(div);  
-        });  
-    }  
+            const text = document.createElement('span');
+            text.textContent = item.pattern;
+            text.style.flex = '1';
+            text.style.wordBreak = 'break-all';
 
-    // 初始化显示  
-    updateChatMessages();  
+            const editBtn = document.createElement('button');
+            editBtn.textContent = '编辑';
+            editBtn.addEventListener('click', () => {
+                const newVal = prompt('编辑正则', item.pattern);
+                if (newVal !== null) {
+                    list[idx].pattern = newVal;
+                    localStorage.setItem('friendCircleRegexList', JSON.stringify(list));
+                    loadRegexList();
+                }
+            });
 
-    debugLog('进入 聊天配置面板');  
+            const delBtn = document.createElement('button');
+            delBtn.textContent = '删除';
+            delBtn.addEventListener('click', () => {
+                list.splice(idx, 1);
+                localStorage.setItem('friendCircleRegexList', JSON.stringify(list));
+                loadRegexList();
+            });
+
+            div.appendChild(checkbox);
+            div.appendChild(text);
+            div.appendChild(editBtn);
+            div.appendChild(delBtn);
+            regexListContainer.appendChild(div);
+        });
+        regexListContainer.scrollTop = regexListContainer.scrollHeight;
+    }
+
+    addRegexButton.addEventListener('click', () => {
+        const val = addRegexInput.value.trim();
+        if (!val) return;
+        const list = JSON.parse(localStorage.getItem('friendCircleRegexList') || '[]');
+        list.push({ pattern: val, enabled: true });
+        localStorage.setItem('friendCircleRegexList', JSON.stringify(list));
+        addRegexInput.value = '';
+        loadRegexList();
+    });
+
+    loadRegexList();
+
+    // ---------------- 获取聊天条数并调试显示 ----------------
+    async function getLastMessages() {
+        try {
+            const ctx = SillyTavern.getContext();
+            if (!ctx || !Array.isArray(ctx.chat)) return [];
+
+            const count = parseInt(localStorage.getItem('friendCircleChatCount') || 10, 10);
+            if (count === 0) return []; // slider 为0返回空数组
+
+            const lastMessages = ctx.chat.slice(-count);
+
+            const regexList = JSON.parse(localStorage.getItem('friendCircleRegexList') || '[]')
+                .filter(r => r.enabled)
+                .map(r => {
+                    try {
+                        // 检查是否是 <tag></tag> 形式，自动生成匹配内容的正则
+                        const tagMatch = r.pattern.match(/^<(\w+)>.*<\/\1>$/);
+                        if (tagMatch) {
+                            const tag = tagMatch[1];
+                            return new RegExp(`<${tag}>[\\s\\S]*?<\\/${tag}>`, 'g');
+                        }
+                        return new RegExp(r.pattern, 'g');
+                    } catch (e) {
+                        console.warn('无效正则:', r.pattern);
+                        return null;
+                    }
+                })
+                .filter(Boolean);
+
+            const cuttedLastMessages = lastMessages.map(msg => {
+                let text = msg.mes || "";
+                regexList.forEach(regex => { text = text.replace(regex, ''); });
+                return text;
+            }).filter(Boolean);
+
+            localStorage.setItem('cuttedLastMessages', JSON.stringify(cuttedLastMessages));
+
+            // 输出修剪后的文本到调试面板
+            debugLog(`已提取 ${cuttedLastMessages.length} 条消息（已修剪）:`);
+            cuttedLastMessages.forEach((m, i) => debugLog(`[${i}] ${m}`));
+
+            return cuttedLastMessages;
+        } catch (e) {
+            console.error('getLastMessages 出错', e);
+            return [];
+        }
+    }
+
+    async function fetchAndCountMessages() {
+        await getLastMessages();
+    }
+
+    // 初始化
+    fetchAndCountMessages();
+    debugLog('进入 聊天配置面板');
 }
 
 function showGenPanel() {  
@@ -762,69 +851,80 @@ function showGenPanel() {
     }
 }
 
-    // ---------- 自动化模式 ----------
-    let autoMode = false;
-    let lastMessageCount = 0;
-    let autoObserver = null;
+   // ---------- 自动化模式 ----------
+let autoMode = false;
+let lastMessageCount = 0;
+let autoObserver = null;
+const AUTO_MODE_KEY = 'friendCircleAutoMode'; // localStorage key
 
-    function toggleAutoMode() {
-        autoMode = !autoMode;
-        const autoBtn = document.getElementById('sp-gen-auto');
+function toggleAutoMode(forceState) {
+    // 如果传入 forceState（true/false），就用它，否则切换当前状态
+    autoMode = typeof forceState === 'boolean' ? forceState : !autoMode;
+    localStorage.setItem(AUTO_MODE_KEY, autoMode ? '1' : '0');
 
-        if (autoMode) {
-            autoBtn.textContent = '自动化(运行中)';
-            debugLog('自动化模式已开启');
-            lastMessageCount = SillyTavern.getContext()?.chat?.length || 0;
+    const autoBtn = document.getElementById('sp-gen-auto');
 
-            autoObserver = new MutationObserver(() => {
-                const ctx = SillyTavern.getContext();
-                if (!ctx || !Array.isArray(ctx.chat)) return;
+    if (autoMode) {
+        autoBtn.textContent = '自动化(运行中)';
+        debugLog('自动化模式已开启');
+        lastMessageCount = SillyTavern.getContext()?.chat?.length || 0;
 
-                if (ctx.chat.length > lastMessageCount) {
-                    const newMsg = ctx.chat[ctx.chat.length - 1];
-                    lastMessageCount = ctx.chat.length;
+        autoObserver = new MutationObserver(() => {
+            const ctx = SillyTavern.getContext();
+            if (!ctx || !Array.isArray(ctx.chat)) return;
 
-                    // 检测是不是非用户消息
-                    if (newMsg && !newMsg.is_user && newMsg.mes) {
-                        debugLog('检测到新AI消息，触发自动生成');
-                        getLastMessages().then(lastMessages => {
-                            const selectedChat = lastMessages.length > 0 ? lastMessages : [];
-                            generateFriendCircle(selectedChat, ['']);
-                        });
-                    }
+            if (ctx.chat.length > lastMessageCount) {
+                const newMsg = ctx.chat[ctx.chat.length - 1];
+                lastMessageCount = ctx.chat.length;
+
+                if (newMsg && !newMsg.is_user && newMsg.mes) {
+                    debugLog('检测到新AI消息，触发自动生成');
+                    const rawCutted = localStorage.getItem('cuttedLastMessages');
+                    const selectedChat = rawCutted ? JSON.parse(rawCutted) : [];
+                    generateFriendCircle(selectedChat, ['']);
                 }
-            });
-
-            // 监听聊天区域变化
-            const chatContainer = document.getElementById('chat');
-            if (chatContainer) {
-                autoObserver.observe(chatContainer, { childList: true, subtree: true });
-            } else {
-                debugLog('未找到聊天容器 #chat，无法自动化');
             }
+        });
 
+        const chatContainer = document.getElementById('chat');
+        if (chatContainer) {
+            autoObserver.observe(chatContainer, { childList: true, subtree: true });
         } else {
-            autoBtn.textContent = '自动化';
-            debugLog('自动化模式已关闭');
-            if (autoObserver) {
-                autoObserver.disconnect();
-                autoObserver = null;
-            }
+            debugLog('未找到聊天容器 #chat，无法自动化');
+        }
+
+    } else {
+        autoBtn.textContent = '自动化';
+        debugLog('自动化模式已关闭');
+        if (autoObserver) {
+            autoObserver.disconnect();
+            autoObserver = null;
         }
     }
+}
+
+// ---------- 页面加载时读取持久化状态 ----------
+const savedAutoMode = localStorage.getItem(AUTO_MODE_KEY);
+if (savedAutoMode === '1') {
+    toggleAutoMode(true); // 强制开启
+}
+
+
 
     // ---------- 按钮绑定 ----------  
-    document.getElementById('sp-gen-now').addEventListener('click', async () => {  
-        try {  
-            const lastMessages = await getLastMessages();  
-            const selectedChat = lastMessages.length > 0 ? lastMessages : ['昨天和小明聊天很开心', '今天完成了一个大项目'];  
-            const selectedWorldbooks = [''];   
-            generateFriendCircle(selectedChat, selectedWorldbooks);  
-        } catch (e) {  
-            console.error('生成异常', e);  
-            debugLog('生成异常', e.message || e);  
-        }  
-    });  
+    // ---------- 按钮绑定 ----------    
+document.getElementById('sp-gen-now').addEventListener('click', async () => {    
+    try {    
+        // 从 localStorage 取已经修剪过的消息
+        const cuttedMessages = JSON.parse(localStorage.getItem('cuttedLastMessages') || '[]');
+        const selectedChat = cuttedMessages.length > 0 ? cuttedMessages : ['昨天和小明聊天很开心', '今天完成了一个大项目'];    
+        const selectedWorldbooks = [''];     
+        generateFriendCircle(selectedChat, selectedWorldbooks);    
+    } catch (e) {    
+        console.error('生成异常', e);    
+        debugLog('生成异常', e.message || e);    
+    }    
+});
 
     // ---------- 工具函数：模拟消息编辑 ----------
     function simulateEditMessage(mesElement, newText) {
