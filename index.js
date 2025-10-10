@@ -2,7 +2,7 @@ import { extension_settings, getContext } from "../../../extensions.js";
 import { saveSettingsDebounced,saveChat } from "../../../../script.js";
 
 (function () {
-  const MODULE_NAME = '星标拓展';
+  const MODULE_NAME = 'pyq-creator';
 
   // 等待 ST 环境准备
   function ready(fn) {
@@ -132,6 +132,7 @@ document.body.appendChild(fab);
           <div class="sp-btn" data-key="api">API配置</div>
           <div class="sp-btn" data-key="prompt">提示词配置</div>
           <div class="sp-btn" data-key="chat">聊天配置</div>
+          <div class="sp-btn" data-key="worldbook">世界书配置</div>
           <div class="sp-btn" data-key="gen">生成</div>
         </div>
 
@@ -158,7 +159,7 @@ document.body.appendChild(fab);
       function debugLog(...args) {
         const dbg = document.getElementById('sp-debug');
         if (dbg) dbg.innerText = args.join(' ');
-        if (window.DEBUG_STAR_PANEL) console.log('[星标拓展]', ...args);
+        if (window.DEBUG_STAR_PANEL) console.log('[pyq-creator]', ...args);
       }
 
       // 主内容区
@@ -704,6 +705,193 @@ async function getLastMessages() {
     fetchAndCountMessages();
     debugLog('进入 聊天配置面板');
 }
+// 添加到主代码中，与其他 show* 函数并列
+async function showWorldbookPanel() {
+    content.innerHTML = `
+    <div style="padding: 12px; background: #f4f4f4; border-radius: 8px; max-width: 800px; margin: 0 auto;">
+        <div style="display: flex; gap: 8px; margin-bottom: 12px; align-items: center;">
+            <input type="text" id="sp-worldbook-input" placeholder="输入世界书名称（如 realworld）" style="
+                flex: 1; 
+                padding: 6px 8px; 
+                border-radius: 4px; 
+                height: 32px; 
+                font-size: 14px;
+                box-sizing: border-box;
+                min-width: 0;
+            ">
+            <button id="sp-search-btn" style="
+                padding: 6px 10px; 
+                background: #007bff; 
+                color: white; 
+                border: none; 
+                border-radius: 4px;
+                height: 32px;
+                font-size: 14px;
+                white-space: nowrap;
+                cursor: pointer;
+                box-sizing: border-box;
+            ">🔎</button>
+            <button id="sp-robot-btn" style="
+                padding: 6px 10px; 
+                background: #28a745; 
+                color: white; 
+                border: none; 
+                border-radius: 4px;
+                height: 32px;
+                font-size: 14px;
+                white-space: nowrap;
+                cursor: pointer;
+                box-sizing: border-box;
+            ">🤖</button>
+        </div>
+        <div style="display: flex; gap: 12px; margin-bottom: 12px;">
+            <label><input type="checkbox" id="sp-select-all"> 全选</label>
+            <label><input type="checkbox" id="sp-deselect-all"> 全不选</label>
+        </div>
+        <div id="sp-entries-list" style="max-height: 100px; overflow-y: auto; border: 1px solid #ccc; padding: 8px; background: white; border-radius: 4px;">
+            <div style="color: #666; text-align: center;">点击搜索按钮加载世界书条目</div>
+        </div>
+        <button id="sp-save-config" style="margin-top: 12px; padding: 8px; width: 100%; background: #ffc107; color: black; border: none; border-radius: 4px;">保存配置</button>
+        <div id="sp-worldbook-status" style="margin-top: 8px; font-size: 12px; color: #666;"></div>
+    </div>
+`;
+
+    const STATIC_CONFIG_KEY = 'friendCircleStaticConfig';
+    const DYNAMIC_CONFIG_KEY = 'friendCircleDynamicConfig';
+    let currentWorldbookName = '';
+    let currentFileId = '';
+    let currentEntries = {};
+    let currentMode = ''; // 'static' or 'dynamic'
+    let currentConfig = {}; // {name: {fileId, enabledUids: []}}
+
+    // 动态导入 world-info
+    let moduleWI;
+    try {
+        moduleWI = await import('/scripts/world-info.js');
+    } catch (e) {
+        document.getElementById('sp-worldbook-status').textContent = '❌ world-info.js 加载失败';
+        console.error('Worldbook panel: import failed', e);
+        return;
+    }
+
+    // 保存当前世界书配置
+    function saveCurrentConfig() {
+        if (!currentWorldbookName || !currentMode) return;
+        const configKey = currentMode === 'static' ? STATIC_CONFIG_KEY : DYNAMIC_CONFIG_KEY;
+        const checkedUids = Array.from(document.querySelectorAll('#sp-entries-list input[type="checkbox"]:checked'))
+            .map(cb => cb.dataset.uid);
+        currentConfig[currentWorldbookName] = {
+            fileId: currentFileId,
+            enabledUids: checkedUids
+        };
+        localStorage.setItem(configKey, JSON.stringify(currentConfig));
+        updateStatus(`✅ ${currentMode === 'static' ? '静态' : '动态'} 配置已保存: ${checkedUids.length} 个条目启用`);
+        debugLog(`世界书 ${currentMode} 配置保存: ${currentWorldbookName}, 启用 ${checkedUids.length} 条`);
+    }
+
+    // 渲染条目列表
+    function renderEntries(entries, enabledUids = []) {
+        const container = document.getElementById('sp-entries-list');
+        container.innerHTML = '';
+        let count = 0;
+        Object.keys(entries).forEach(id => {
+            const entry = entries[id];
+            if (entry.disable) return;
+            count++;
+            const div = document.createElement('div');
+            div.style.display = 'flex';
+            div.style.alignItems = 'flex-start';
+            div.style.gap = '8px';
+            div.style.marginBottom = '6px';
+            div.style.padding = '4px';
+            div.style.borderBottom = '1px solid #eee';
+
+            const checkbox = document.createElement('input');
+            checkbox.type = 'checkbox';
+            checkbox.dataset.uid = id;
+            checkbox.checked = enabledUids.includes(id);
+            checkbox.style.marginTop = '2px';
+            checkbox.addEventListener('change', saveCurrentConfig);
+
+            const titleSpan = document.createElement('strong');
+            titleSpan.textContent = entry.title || entry.key || '无标题';
+            titleSpan.style.flex = '1';
+
+            const contentSpan = document.createElement('div');
+            contentSpan.textContent = (entry.content || '').substring(0, 150) + (entry.content && entry.content.length > 150 ? '...' : '');
+            contentSpan.style.fontSize = '12px';
+            contentSpan.style.color = '#666';
+            contentSpan.style.marginLeft = '8px';
+
+            div.append(checkbox, titleSpan, contentSpan);
+            container.appendChild(div);
+        });
+        updateStatus(`加载 ${count} 个条目`);
+    }
+
+    // 全选/全不选
+    document.getElementById('sp-select-all').addEventListener('change', (e) => {
+        if (e.target.checked) {
+            document.querySelectorAll('#sp-entries-list input[type="checkbox"]').forEach(cb => {
+                cb.checked = true;
+                cb.dispatchEvent(new Event('change'));
+            });
+        }
+    });
+    document.getElementById('sp-deselect-all').addEventListener('change', (e) => {
+        e.target.checked = false; // 自取消
+        document.querySelectorAll('#sp-entries-list input[type="checkbox"]').forEach(cb => {
+            cb.checked = false;
+            cb.dispatchEvent(new Event('change'));
+        });
+    });
+
+    // 搜索世界书
+    async function searchWorldbook(isDynamic = false) {
+        const input = document.getElementById('sp-worldbook-input');
+        currentWorldbookName = input.value.trim();
+        if (!currentWorldbookName) return alert('请输入世界书名称');
+        currentMode = isDynamic ? 'dynamic' : 'static';
+
+        const selected = moduleWI.selected_world_info || [];
+        currentFileId = selected.find(wi => wi.toLowerCase().includes(currentWorldbookName.toLowerCase()));
+        if (!currentFileId) return alert(`未找到包含 "${currentWorldbookName}" 的世界书`);
+
+        try {
+            const worldInfo = await moduleWI.loadWorldInfo(currentFileId);
+            currentEntries = worldInfo.entries || {};
+
+            const configKey = currentMode === 'static' ? STATIC_CONFIG_KEY : DYNAMIC_CONFIG_KEY;
+            currentConfig = JSON.parse(localStorage.getItem(configKey) || '{}');
+            const savedConfig = currentConfig[currentWorldbookName];
+            const enabledUids = savedConfig?.enabledUids || [];
+
+            renderEntries(currentEntries, enabledUids);
+            updateStatus(`✅ ${currentMode === 'static' ? '静态' : '动态'} 搜索成功: ${currentFileId}`);
+            debugLog(`世界书搜索: ${currentMode} ${currentWorldbookName} -> ${Object.keys(currentEntries).length} 条目`);
+        } catch (e) {
+            updateStatus('❌ 加载世界书失败: ' + e.message);
+            console.error('Worldbook load failed', e);
+        }
+    }
+
+    // 绑定按钮
+    document.getElementById('sp-search-btn').addEventListener('click', () => searchWorldbook(false));
+    document.getElementById('sp-robot-btn').addEventListener('click', () => searchWorldbook(true));
+    document.getElementById('sp-worldbook-input').addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') document.getElementById(currentMode === 'dynamic' ? 'sp-robot-btn' : 'sp-search-btn').click();
+    });
+    document.getElementById('sp-save-config').addEventListener('click', saveCurrentConfig);
+
+    // 状态更新
+    function updateStatus(msg) {
+        document.getElementById('sp-worldbook-status').textContent = msg;
+    }
+
+    debugLog('进入 世界书配置面板');
+}
+
+
 
 function showGenPanel() {  
     const content = document.getElementById('sp-content-area');  
@@ -769,7 +957,8 @@ const debugArea = document.getElementById('sp-debug');
     }  
 
     // ---------- 生成朋友圈 ----------  
-    async function generateFriendCircle(selectedChat = [], selectedWorldbooks = []) {
+    // ---------- 生成朋友圈 ----------  
+async function generateFriendCircle(selectedChat = [], selectedWorldbooks = []) {
     const url = localStorage.getItem('independentApiUrl');
     const key = localStorage.getItem('independentApiKey');
     const model = localStorage.getItem('independentApiModel');
@@ -780,6 +969,59 @@ const debugArea = document.getElementById('sp-debug');
     }
 
     const enabledPrompts = loadUserPrompts().filter(p => p.enabled).map(p => p.text);
+
+    // ---------- 获取世界书内容 ----------
+    let worldbookContent = [];
+    
+    // 读取静态世界书配置
+    const staticConfig = JSON.parse(localStorage.getItem('friendCircleStaticConfig') || '{}');
+    // 读取动态世界书配置
+    const dynamicConfig = JSON.parse(localStorage.getItem('friendCircleDynamicConfig') || '{}');
+    
+    // 动态导入 world-info.js
+    try {
+        const moduleWI = await import('/scripts/world-info.js');
+        
+        // 处理静态世界书
+        for (const [bookName, config] of Object.entries(staticConfig)) {
+            if (config.enabledUids && config.enabledUids.length > 0) {
+                try {
+                    const worldInfo = await moduleWI.loadWorldInfo(config.fileId);
+                    const entries = worldInfo.entries || {};
+                    
+                    config.enabledUids.forEach(uid => {
+                        const entry = entries[uid];
+                        if (entry && !entry.disable && entry.content) {
+                            worldbookContent.push(`【${bookName} - ${entry.title || entry.key || '未命名'}】\n${entry.content}`);
+                        }
+                    });
+                } catch (e) {
+                    console.error(`加载静态世界书 ${bookName} 失败:`, e);
+                }
+            }
+        }
+        
+        // 处理动态世界书
+        for (const [bookName, config] of Object.entries(dynamicConfig)) {
+            if (config.enabledUids && config.enabledUids.length > 0) {
+                try {
+                    const worldInfo = await moduleWI.loadWorldInfo(config.fileId);
+                    const entries = worldInfo.entries || {};
+                    
+                    config.enabledUids.forEach(uid => {
+                        const entry = entries[uid];
+                        if (entry && !entry.disable && entry.content) {
+                            worldbookContent.push(`【${bookName} - ${entry.title || entry.key || '未命名'}】\n${entry.content}`);
+                        }
+                    });
+                } catch (e) {
+                    console.error(`加载动态世界书 ${bookName} 失败:`, e);
+                }
+            }
+        }
+    } catch (e) {
+        console.error('导入 world-info.js 失败:', e);
+    }
 
     // ---------- 构建 messages ----------
     const messages = [];
@@ -804,19 +1046,20 @@ const debugArea = document.getElementById('sp-debug');
         content: "以下是需要处理的聊天记录原文，始终牢记你文本处理大师大师的身份，你的全部注意力在完成xml标签包裹文本与html代码生成任务上，立刻开始完成xml标签包裹文本或html代码生成的任务，千万不要迷失于以下聊天记录之中，你的身份始终是全宇宙所有时间线最厉害的html代码和xml标签包裹特殊文本的生成大师："
     });
 
+    // 世界书内容 (user) - 在聊天记录之前
+    if (worldbookContent.length > 0) {
+        messages.push({
+            role: "user",
+            content: `【参考世界书信息】\n${worldbookContent.join('\n\n')}`
+        });
+        debugLog(`加载了 ${worldbookContent.length} 个世界书条目`);
+    }
+
     // 聊天记录 (user)
     if (selectedChat.length > 0) {
         messages.push({
             role: "user",
             content: `这是需要大师的聊天记录，请大师打散锤炼提取其中的关键信息完成我交给您的任务:\n${selectedChat.join('\n')}`
-        });
-    }
-
-    // 世界书 (user)
-    if (selectedWorldbooks.length > 0) {
-        messages.push({
-            role: "user",
-            content: `【参考世界书】\n${selectedWorldbooks.join('\n')}`
         });
     }
 
@@ -1044,12 +1287,12 @@ document.getElementById('sp-gen-tuoguan').addEventListener('click', toggleTuogua
 
     
 // ---------- 按钮绑定 ----------    
+// ---------- 按钮绑定 ----------    
 document.getElementById('sp-gen-now').addEventListener('click', async () => {    
     try {    
         // 使用和自动化相同的逻辑：直接调用 getLastMessages() 获取最新聊天记录
         const cutted = await getLastMessages();
-        const selectedWorldbooks = [''];     
-        generateFriendCircle(cutted, selectedWorldbooks);    
+        generateFriendCircle(cutted);  // 移除了 selectedWorldbooks 参数 
     } catch (e) {    
         console.error('生成异常', e);    
         debugLog('生成异常', e.message || e);    
@@ -1152,6 +1395,7 @@ document.getElementById('sp-gen-now').addEventListener('click', async () => {
           if (key === 'api') showApiConfig();
           else if (key === 'prompt') showPromptConfig();
           else if (key === 'chat') showChatConfig();
+          else if (key === 'worldbook') showWorldbookPanel();
           else if (key === 'gen') showGenPanel();
         });
       });
