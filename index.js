@@ -126,10 +126,7 @@ document.body.appendChild(fab);
       const panel = document.createElement('div');
       panel.id = 'star-panel';
       panel.innerHTML = `
-        <div class="sp-header">
-          <div style="font-weight:600">${MODULE_NAME}</div>
-          <div style="font-size:12px; color:#999">v0.1</div>
-        </div>
+       
 
         <div class="sp-grid">
           <div class="sp-btn" data-key="api">API配置</div>
@@ -932,13 +929,13 @@ if (savedAutoMode === '1') {
 
     // ---------- 按钮绑定 ----------  
     // ---------- 按钮绑定 ----------    
+// ---------- 按钮绑定 ----------    
 document.getElementById('sp-gen-now').addEventListener('click', async () => {    
     try {    
-        // 从 localStorage 取已经修剪过的消息
-        const cuttedMessages = JSON.parse(localStorage.getItem('cuttedLastMessages') || '[]');
-        const selectedChat = cuttedMessages.length > 0 ? cuttedMessages : ['昨天和小明聊天很开心', '今天完成了一个大项目'];    
+        // 使用和自动化相同的逻辑：直接调用 getLastMessages() 获取最新聊天记录
+        const cutted = await getLastMessages();
         const selectedWorldbooks = [''];     
-        generateFriendCircle(selectedChat, selectedWorldbooks);    
+        generateFriendCircle(cutted, selectedWorldbooks);    
     } catch (e) {    
         console.error('生成异常', e);    
         debugLog('生成异常', e.message || e);    
