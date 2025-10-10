@@ -712,7 +712,8 @@ content.innerHTML = `
     <button id="sp-gen-inject-input">注入输入框</button>  
     <button id="sp-gen-inject-chat">注入聊天</button>  
     <button id="sp-gen-inject-swipe">注入swipe</button>  
-    <button id="sp-gen-auto">自动化</button>  
+    <button id="sp-gen-auto">自动化</button>
+    <button id="sp-gen-tuoguan">托管</button>  
     <div id="sp-gen-output" class="sp-output" contenteditable="true" style="  
         margin-top:8px;  
         white-space: pre-wrap;  
@@ -863,6 +864,8 @@ const debugArea = document.getElementById('sp-debug');
     }
 }
 
+
+
    // ---------- 自动化模式 ----------
 let autoMode = false;
 let lastMessageCount = 0;
@@ -924,11 +927,122 @@ const savedAutoMode = localStorage.getItem(AUTO_MODE_KEY);
 if (savedAutoMode === '1') {
     toggleAutoMode(true); // 强制开启
 }
+// ---------- 托管模式 ----------
+let tuoguanMode = false;
+let tuoguanLastMessageCount = 0;
+let tuoguanObserver = null;
+const TUOGUAN_MODE_KEY = 'friendCircleTuoguanMode'; // localStorage key
+
+function toggleTuoguanMode(forceState) {
+    // 如果传入 forceState（true/false），就用它，否则切换当前状态
+    tuoguanMode = typeof forceState === 'boolean' ? forceState : !tuoguanMode;
+    localStorage.setItem(TUOGUAN_MODE_KEY, tuoguanMode ? '1' : '0');
+
+    const tuoguanBtn = document.getElementById('sp-gen-tuoguan');
+
+    if (tuoguanMode) {
+        tuoguanBtn.textContent = '托管(运行中)';
+        debugLog('托管模式已开启');
+        tuoguanLastMessageCount = SillyTavern.getContext()?.chat?.length || 0;
+
+        tuoguanObserver = new MutationObserver(() => {
+            const ctx = SillyTavern.getContext();
+            if (!ctx || !Array.isArray(ctx.chat)) return;
+
+            if (ctx.chat.length > tuoguanLastMessageCount) {
+                const newMsg = ctx.chat[ctx.chat.length - 1];
+                tuoguanLastMessageCount = ctx.chat.length;
+
+                if (newMsg && !newMsg.is_user && newMsg.mes) {
+                    debugLog('托管模式：检测到新AI消息，触发自动生成并注入');
+
+                    // 获取最新聊天记录
+                    getLastMessages().then(async cutted => {
+                        // 1. 先生成内容到 outputContainer
+                        await generateFriendCircle(cutted, ['']);
+                        
+                        // 2. 等待一小段时间确保生成完成
+                        await new Promise(resolve => setTimeout(resolve, 500));
+                        
+                        // 3. 获取生成的内容
+                        const texts = outputContainer.textContent.trim();
+                        if (!texts || texts.includes('生成失败')) {
+                            debugLog('托管模式：生成内容为空或失败，跳过注入');
+                            return;
+                        }
+                        
+                        // 4. 自动执行注入聊天
+                        debugLog('托管模式：开始自动注入聊天');
+                        
+                        // 找最后一条 AI 内存消息
+                        const lastAiMes = [...ctx.chat].reverse().find(m => m.is_user === false);
+                        if (!lastAiMes) {
+                            debugLog('托管模式：未找到内存中的 AI 消息');
+                            return;
+                        }
+
+                        // 从 DOM 获取消息列表
+                        const allMes = Array.from(document.querySelectorAll('.mes'));
+                        if (allMes.length === 0) {
+                            debugLog('托管模式：未找到任何 DOM 消息');
+                            return;
+                        }
+
+                        // 找最后一条 AI DOM 消息
+                        const aiMes = [...allMes].reverse().find(m => !m.classList.contains('user'));
+                        if (!aiMes) {
+                            debugLog('托管模式：未找到 DOM 中的 AI 消息');
+                            return;
+                        }
+
+                        // 原始消息文本（从内存里拿）
+                        const oldRaw = lastAiMes.mes;
+
+                        // 拼接新内容（旧 + 新）
+                        const newContent = oldRaw + '\n' + texts;
+
+                        // 用模拟编辑来触发 DOM 更新
+                        simulateEditMessage(aiMes, newContent);
+
+                        debugLog('托管模式：自动注入聊天完成');
+                        
+                    }).catch(err => {
+                        console.error('托管模式获取最新消息失败:', err);
+                        debugLog('托管模式错误：' + err.message);
+                    });
+                }
+            }
+        });
+
+        const chatContainer = document.getElementById('chat');
+        if (chatContainer) {
+            tuoguanObserver.observe(chatContainer, { childList: true, subtree: true });
+        } else {
+            debugLog('未找到聊天容器 #chat，无法启动托管模式');
+        }
+
+    } else {
+        tuoguanBtn.textContent = '托管';
+        debugLog('托管模式已关闭');
+        if (tuoguanObserver) {
+            tuoguanObserver.disconnect();
+            tuoguanObserver = null;
+        }
+    }
+}
+
+// 页面加载时读取托管模式的持久化状态
+const savedTuoguanMode = localStorage.getItem(TUOGUAN_MODE_KEY);
+if (savedTuoguanMode === '1') {
+    toggleTuoguanMode(true); // 强制开启
+}
+
+// 托管按钮绑定
+document.getElementById('sp-gen-tuoguan').addEventListener('click', toggleTuoguanMode);
 
 
 
-    // ---------- 按钮绑定 ----------  
-    // ---------- 按钮绑定 ----------    
+    
 // ---------- 按钮绑定 ----------    
 document.getElementById('sp-gen-now').addEventListener('click', async () => {    
     try {    
@@ -1030,6 +1144,7 @@ document.getElementById('sp-gen-now').addEventListener('click', async () => {
     // 自动化按钮绑定  
     document.getElementById('sp-gen-auto').addEventListener('click', toggleAutoMode);  
 }
+
       // 面板按钮绑定
       panel.querySelectorAll('.sp-btn').forEach(btn => {
         btn.addEventListener('click', () => {
