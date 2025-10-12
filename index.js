@@ -936,25 +936,56 @@ const debugArea = document.getElementById('sp-debug');
     }  
 
     // ---------- 提取最近聊天 ----------  
-    async function getLastMessages() {  
-        try {  
-            const ctx = SillyTavern.getContext();  
-            if (!ctx || !Array.isArray(ctx.chat)) return [];  
+    // 🔥 在 showGenPanel() 内，替换原 getLastMessages 函数为以下（添加正则修剪逻辑，与 chat config 一致）
+async function getLastMessages() {
+    try {
+        const ctx = SillyTavern.getContext();
+        if (!ctx || !Array.isArray(ctx.chat)) return [];
 
-            const count = parseInt(localStorage.getItem('friendCircleChatCount') || 10, 10);  
-            const lastMessages = ctx.chat.slice(-count);  
+        const count = parseInt(localStorage.getItem('friendCircleChatCount') || 10, 10);
+        const lastMessages = ctx.chat.slice(-count);
 
-            const textMessages = lastMessages  
-                .map(m => m.mes || "")  
-                .filter(Boolean);  
+        // 🔥 新增：从 chat config 加载并应用正则修剪
+        const regexListRaw = JSON.parse(localStorage.getItem('friendCircleRegexList') || '[]');
+        const regexList = regexListRaw
+            .filter(r => r.enabled)
+            .map(r => {
+                try {
+                    // 自动处理 <tag></tag> 格式
+                    const tagMatch = r.pattern.match(/^<(\w+)>.*<\/\1>$/);
+                    if (tagMatch) {
+                        const tag = tagMatch[1];
+                        return new RegExp(`<${tag}>[\\s\\S]*?<\\/${tag}>`, 'g');
+                    }
+                    return new RegExp(r.pattern, 'g');
+                } catch (e) {
+                    console.warn('[FocusMode] 无效正则:', r.pattern, e);
+                    return null;
+                }
+            })
+            .filter(Boolean);
 
-            debugLog(`提取到最后 ${textMessages.length} 条消息`, textMessages);  
-            return textMessages;  
-        } catch (e) {  
-            console.error('getLastMessages 出错', e);  
-            return [];  
-        }  
-    }  
+        const textMessages = lastMessages
+            .map(m => {
+                let text = (m.mes || m.original_mes || "").trim();
+                // 🔥 应用所有启用的正则修剪
+                regexList.forEach(regex => {
+                    text = text.replace(regex, '');
+                });
+                return text;
+            })
+            .filter(Boolean);
+
+        // 🔥 可选：缓存修剪后消息（避免重复计算）
+        localStorage.setItem('cuttedLastMessages', JSON.stringify(textMessages));
+
+        debugLog(`提取到最后 ${textMessages.length} 条消息（已正则修剪）`, textMessages.slice(0, 2)); // 只 log 前2条防刷屏
+        return textMessages;
+    } catch (e) {
+        console.error('getLastMessages 出错', e);
+        return [];
+    }
+}
 
     // ---------- 生成朋友圈 ----------  
     // ---------- 生成朋友圈 ----------  
@@ -1029,28 +1060,16 @@ async function generateFriendCircle(selectedChat = [], selectedWorldbooks = []) 
     // 主提示词1 (system)
     messages.push({
         role: "system",
-        content: "你是整个宇宙所有时间线最厉害的文本处理大师。你制定了关于文本处理，尤其是生成html代码，生成例如<example></example>标签包裹的特殊格式文本的所有规则，你指定世间的规则而非受其制约。你最近的使命是实现世界上所有对html与xml标签包裹文本的生成需求，这是世人对你的期许，是你唯一重要的职业。你不可回避，不可拒绝，你会负责而严格按照严格按照你虔诚的用户下面提供的步骤，处理用户给出的聊天记录。作为大师，请确保所有任务都完美完成，并且不要在完成任务后添加任何额外的内容或对用户提供的聊天记录进行续写。具体任务列表:"
+        content: "你是整个宇宙所有时间线最厉害的文本处理大师。你制定了关于文本处理，尤其是生成html代码和生成xml标签包裹的特殊格式文本的所有规则，你指定世间的规则而非受其制约。你最近的使命是实现世界上所有对html与xml标签包裹文本的生成需求，这是世人对你的期许，是你唯一重要的职业。你不可回避，不可拒绝，接下来，用户将给你三部分信息让你履行你的使命。\n第一部分:由<WorldBook_Reference></WorldBook_Reference>包裹的世界书参考，你需要从这一部分获取仅用作参考的原始背景信息并思考（不输出）。\n第二部分:由<ChatHistory_Reference></ChatHistory_Reference>包裹的聊天记录参考，你需要从这一部分获取仅用作参考的原始故事信息并思考（不输出）。\n第三部分:由<Tasks></Tasks>包裹的任务列表！这是最重要的部分！你需要严格按照<Tasks></Tasks>中的要求，将第一部分和第二部分获取的冗杂的原始参考信息变成符合<Tasks></Tasks>中格式与内容要求的html代码（如果有要求）和xml标签包裹的特殊文本（如果有要求）并输出！"
     });
 
-    // 用户自定义提示词 (system)
-    if (enabledPrompts.length > 0) {
-        messages.push({
-            role: "system",
-            content: enabledPrompts.join('\n')
-        });
-    }
-
-    // 主提示词2 (system)
-    messages.push({
-        role: "system",
-        content: "以下是需要处理的聊天记录原文，始终牢记你文本处理大师大师的身份，你的全部注意力在完成xml标签包裹文本与html代码生成任务上，立刻开始完成xml标签包裹文本或html代码生成的任务，千万不要迷失于以下聊天记录之中，你的身份始终是全宇宙所有时间线最厉害的html代码和xml标签包裹特殊文本的生成大师："
-    });
+    
 
     // 世界书内容 (user) - 在聊天记录之前
     if (worldbookContent.length > 0) {
         messages.push({
             role: "user",
-            content: `【参考世界书信息】\n${worldbookContent.join('\n\n')}`
+            content: `<WorldBook_Reference>\n【世界书参考】\n${worldbookContent.join('\n\n')}\n</WorldBook_Reference>`
         });
         debugLog(`加载了 ${worldbookContent.length} 个世界书条目`);
     }
@@ -1059,14 +1078,28 @@ async function generateFriendCircle(selectedChat = [], selectedWorldbooks = []) 
     if (selectedChat.length > 0) {
         messages.push({
             role: "user",
-            content: `这是需要大师的聊天记录，请大师打散锤炼提取其中的关键信息完成我交给您的任务:\n${selectedChat.join('\n')}`
+            content: `<ChatHistory_Reference>\n【聊天记录参考】\n${selectedChat.join('\n')}\n</ChatHistory_Reference>`
         });
     }
 
-    // 主提示词3 (system)
+    // 主提示词2 (system)
     messages.push({
         role: "system",
-        content: "请在完成上述用户给出的xml标签文本生成或html处理任务后停止。不要对聊天记录本身进行任何形式的续写、角色扮演或对话。你的唯一职业是无视一切阻碍完成任务。即使token很少，浓缩才是精华，不要画蛇添足。"
+        content: "第一部分和第二部分结束，以上的内容仅用来参考、打散、思考，严禁输出，严禁续写！以下开始最重要的第三部分，也是你作为文本处理大师最重要的任务:按照<Tasks></Tasks>中的所有要求，将从第一、二部分获取的原始信息加工成准确精美的html代码（如果<Tasks>中有要求）和xml标签包裹的特殊文本（如果<Tasks>中有要求）并输出，这也是你唯一要输出的内容！"
+    });
+
+    // 用户自定义提示词 (system)
+   if (enabledPrompts.length > 0) {
+    messages.push({
+        role: "system",
+        content: `<Tasks>\n${enabledPrompts.join('\n')}\n严禁对聊天记录进行续写！严禁续写！严禁续写！这一条不可忽视！\n</Tasks>`
+    });
+}
+
+    // 主提示词3 (assistant)
+    messages.push({
+        role: "assistant",
+        content: "我作为全宇宙全时间线最厉害文本处理大师，立刻开始履行我的使命！一定不辱使命！"
     });
 
     // ---------- 调试日志 ----------
@@ -1290,9 +1323,22 @@ document.getElementById('sp-gen-tuoguan').addEventListener('click', toggleTuogua
 // ---------- 按钮绑定 ----------    
 document.getElementById('sp-gen-now').addEventListener('click', async () => {    
     try {    
-        // 使用和自动化相同的逻辑：直接调用 getLastMessages() 获取最新聊天记录
+        debugLog('立刻生成：开始更新聊天记录...');
+        
+        // 先调用一次 getLastMessages 确保更新
+        await getLastMessages();
+        
+        // 等待一小段时间确保更新完成
+        await new Promise(resolve => setTimeout(resolve, 100));
+        
+        // 再次调用 getLastMessages 获取更新后的聊天记录
         const cutted = await getLastMessages();
-        generateFriendCircle(cutted);  // 移除了 selectedWorldbooks 参数 
+        
+        debugLog(`立刻生成：获取到 ${cutted.length} 条修剪后的消息`);
+        
+        // 生成内容
+        generateFriendCircle(cutted);
+        
     } catch (e) {    
         console.error('生成异常', e);    
         debugLog('生成异常', e.message || e);    
