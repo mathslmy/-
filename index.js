@@ -144,6 +144,12 @@ document.body.appendChild(fab);
       `;
       document.body.appendChild(panel);
 
+
+// 模拟点击“生成”按钮，让它默认显示生成面板
+setTimeout(() => {
+  const genBtn = panel.querySelector('.sp-btn[data-key="gen"]');
+  if (genBtn) genBtn.click();
+}, 0);
       // fab点击展开/关闭
       fab.addEventListener('click', () => {
         panel.style.display = panel.style.display === 'block' ? 'none' : 'block';
@@ -891,51 +897,7 @@ async function showWorldbookPanel() {
     debugLog('进入 世界书配置面板');
 }
 
-
-
-function showGenPanel() {  
-    const content = document.getElementById('sp-content-area');  
-content.innerHTML = `  
-    <button id="sp-gen-now">立刻生成</button>  
-    <button id="sp-gen-inject-input">注入输入框</button>  
-    <button id="sp-gen-inject-chat">注入聊天</button>  
-    <button id="sp-gen-inject-swipe">注入swipe</button>  
-    <button id="sp-gen-auto">自动化</button>
-    <button id="sp-gen-tuoguan">托管</button>  
-    <div id="sp-gen-output" class="sp-output" contenteditable="true" style="  
-        margin-top:8px;  
-        white-space: pre-wrap;  
-        max-height: 200px;  
-        overflow-y: auto;  
-        padding: 8px;  
-        border: 1px solid #ccc;  
-        border-radius: 6px;  
-        background: #111;  
-        color: #fff;  
-    "></div>  
-`;  
-
-const outputContainer = document.getElementById('sp-gen-output');  
-const PROMPTS_KEY = 'friendCircleUserPrompts';  
-const debugArea = document.getElementById('sp-debug');
-
-    function debugLog(...args) {  
-        if (debugArea) debugArea.innerText += args.join(' ') + '\n';  
-        console.log('[星标拓展-生成]', ...args);  
-    }  
-
-    // ---------- 加载用户提示词 ----------  
-    function loadUserPrompts() {  
-        try {  
-            const raw = localStorage.getItem(PROMPTS_KEY);  
-            return raw ? JSON.parse(raw) : [];  
-        } catch (e) {  
-            console.error('加载提示词失败', e);  
-            return [];  
-        }  
-    }  
-
-    // ---------- 提取最近聊天 ----------  
+// ---------- 提取最近聊天 ----------  
     // 🔥 在 showGenPanel() 内，替换原 getLastMessages 函数为以下（添加正则修剪逻辑，与 chat config 一致）
 async function getLastMessages() {
     try {
@@ -979,13 +941,57 @@ async function getLastMessages() {
         // 🔥 可选：缓存修剪后消息（避免重复计算）
         localStorage.setItem('cuttedLastMessages', JSON.stringify(textMessages));
 
-        debugLog(`提取到最后 ${textMessages.length} 条消息（已正则修剪）`, textMessages.slice(0, 2)); // 只 log 前2条防刷屏
+        debugLog(`提取到最后 ${textMessages.length} 条消息（已正则修剪）`, textMessages.slice(0, 5)); // 只 log 前2条防刷屏
         return textMessages;
     } catch (e) {
         console.error('getLastMessages 出错', e);
         return [];
     }
 }
+
+function showGenPanel() {  
+    const content = document.getElementById('sp-content-area');  
+content.innerHTML = `  
+    <button id="sp-gen-now">立刻生成</button>  
+    <button id="sp-gen-inject-input">注入输入框</button>  
+    <button id="sp-gen-inject-chat">注入聊天</button>  
+    <button id="sp-gen-inject-swipe">注入swipe</button>  
+    <button id="sp-gen-auto">自动化</button>
+    <button id="sp-gen-tuoguan">托管</button>  
+    <div id="sp-gen-output" class="sp-output" contenteditable="true" style="  
+        margin-top:8px;  
+        white-space: pre-wrap;  
+        max-height: 200px;  
+        overflow-y: auto;  
+        padding: 8px;  
+        border: 1px solid #ccc;  
+        border-radius: 6px;  
+        background: #111;  
+        color: #fff;  
+    "></div>  
+`;  
+
+const outputContainer = document.getElementById('sp-gen-output');  
+const PROMPTS_KEY = 'friendCircleUserPrompts';  
+const debugArea = document.getElementById('sp-debug');
+
+    function debugLog(...args) {  
+        if (debugArea) debugArea.innerText += args.join(' ') + '\n';  
+        console.log('[星标拓展-生成]', ...args);  
+    }  
+
+    // ---------- 加载用户提示词 ----------  
+    function loadUserPrompts() {  
+        try {  
+            const raw = localStorage.getItem(PROMPTS_KEY);  
+            return raw ? JSON.parse(raw) : [];  
+        } catch (e) {  
+            console.error('加载提示词失败', e);  
+            return [];  
+        }  
+    }  
+
+    
 
     // ---------- 生成朋友圈 ----------  
     // ---------- 生成朋友圈 ----------  
