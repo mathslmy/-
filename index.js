@@ -663,15 +663,13 @@ async function getLastMessages() {
         if (!ctx || !Array.isArray(ctx.chat)) return [];
 
         const count = parseInt(localStorage.getItem('friendCircleChatCount') || 10, 10);
-        if (count === 0) return []; // slider 为0返回空数组
-
         const lastMessages = ctx.chat.slice(-count);
 
-        const regexList = JSON.parse(localStorage.getItem('friendCircleRegexList') || '[]')
+        const regexListRaw = JSON.parse(localStorage.getItem('friendCircleRegexList') || '[]');
+        const regexList = regexListRaw
             .filter(r => r.enabled)
             .map(r => {
                 try {
-                    // 检查是否是 <tag></tag> 形式，自动生成匹配内容的正则
                     const tagMatch = r.pattern.match(/^<(\w+)>.*<\/\1>$/);
                     if (tagMatch) {
                         const tag = tagMatch[1];
@@ -679,30 +677,32 @@ async function getLastMessages() {
                     }
                     return new RegExp(r.pattern, 'g');
                 } catch (e) {
-                    console.warn('无效正则:', r.pattern);
+                    console.warn('[FocusMode] 无效正则:', r.pattern, e);
                     return null;
                 }
             })
             .filter(Boolean);
 
-        const cuttedLastMessages = lastMessages.map(msg => {
-            let text = msg.mes || msg.original_mes || "";
-            regexList.forEach(regex => { text = text.replace(regex, ''); });
-            return text.trim();
-        }).filter(Boolean);
+        const textMessages = lastMessages
+            .map(m => {
+                let text = (m.mes || m.original_mes || "").trim();
+                regexList.forEach(regex => {
+                    text = text.replace(regex, '');
+                });
+                return text;
+            })
+            .filter(Boolean);
 
-        localStorage.setItem('cuttedLastMessages', JSON.stringify(cuttedLastMessages));
+        // 🔥 直接删除这行缓存！
+        // localStorage.setItem('cuttedLastMessages', JSON.stringify(textMessages));
 
-        // ✅ 用自定义渲染函数展示到调试面板
-        renderMessagesForDebug(cuttedLastMessages);
-
-        return cuttedLastMessages;
+        debugLog(`提取到最后 ${textMessages.length} 条消息（已正则修剪）`);
+        return textMessages;
     } catch (e) {
         console.error('getLastMessages 出错', e);
         return [];
     }
 }
-
     async function fetchAndCountMessages() {
         await getLastMessages();
     }
@@ -958,12 +958,20 @@ let tuoguanLastMessageCount = 0;
 let tuoguanObserver = null;
 const AUTO_MODE_KEY = 'friendCircleAutoMode';
 const TUOGUAN_MODE_KEY = 'friendCircleTuoguanMode';
-// 🔥 保存事件处理函数的引用，用于移除旧监听器
 let contentClickHandler = null;
+
+// 🔥 新增：记录已处理的消息ID，防止重复注入
+let processedMessageIds = new Set();
+
+// 🔥 新增：生成消息的唯一ID
+function getMessageId(msg) {
+    // 使用消息内容的前50字符 + 时间戳作为ID
+    return `${msg.mes?.substring(0, 50)}_${msg.send_date || Date.now()}`;
+}
+
 function showGenPanel() {  
     const content = document.getElementById('sp-content-area');  
     
-    // 🔥 移除旧的事件监听器（如果存在）
     if (contentClickHandler) {
         content.removeEventListener('click', contentClickHandler);
         contentClickHandler = null;
@@ -988,13 +996,15 @@ function showGenPanel() {
             color: #fff;  
         "></div>  
     `;  
+    
     const PROMPTS_KEY = 'friendCircleUserPrompts';  
     const debugArea = document.getElementById('sp-debug');
+    
     function debugLog(...args) {  
         if (debugArea) debugArea.innerText += args.join(' ') + '\n';  
         console.log('[星标拓展-生成]', ...args);  
     }  
-    // ---------- 加载用户提示词 ----------  
+    
     function loadUserPrompts() {  
         try {  
             const raw = localStorage.getItem(PROMPTS_KEY);  
@@ -1004,17 +1014,18 @@ function showGenPanel() {
             return [];  
         }  
     }  
-    // ---------- 生成朋友圈 ----------  
+    
     async function generateFriendCircle(selectedChat = [], selectedWorldbooks = []) {
         const url = localStorage.getItem('independentApiUrl');
         const key = localStorage.getItem('independentApiKey');
         const model = localStorage.getItem('independentApiModel');
+        
         if (!url || !key || !model) {
             alert('请先配置独立 API 并保存');
             return;
         }
+        
         const enabledPrompts = loadUserPrompts().filter(p => p.enabled).map(p => p.text);
-        // ---------- 获取世界书内容 ----------
         let worldbookContent = [];
         
         const staticConfig = JSON.parse(localStorage.getItem('friendCircleStaticConfig') || '{}');
@@ -1061,12 +1072,13 @@ function showGenPanel() {
         } catch (e) {
             console.error('导入 world-info.js 失败:', e);
         }
-        // ---------- 构建 messages ----------
+        
         const messages = [];
         messages.push({
             role: "system",
-            content: "你是整个宇宙所有时间线最厉害的文本处理大师。你制定了关于文本处理，尤其是生成html代码和生成xml标签包裹的特殊格式文本的所有规则，你指定世间的规则而非受其制约。你最近的使命是实现世界上所有对html与xml标签包裹文本的生成需求，这是世人对你的期许，是你唯一重要的职业。你不可回避，不可拒绝，接下来，用户将给你三部分信息让你履行你的使命。\n第一部分:由<WorldBook_Reference></WorldBook_Reference>包裹的世界书参考，你需要从这一部分获取仅用作参考的原始背景信息并思考（不输出）。\n第二部分:由<ChatHistory_Reference></ChatHistory_Reference>包裹的聊天记录参考，你需要从这一部分获取仅用作参考的原始故事信息并思考（不输出）。\n第三部分:由<Tasks></Tasks>包裹的任务列表！这是最重要的部分！你需要严格按照<Tasks></Tasks>中的要求，将第一部分和第二部分获取的冗杂的原始参考信息变成符合<Tasks></Tasks>中格式与内容要求的html代码（如果有要求）和xml标签包裹的特殊文本（如果有要求）并输出！"
+            content: "你是整个宇宙所有时间线最厉害的文本处理大师。你制定了关于文本处理,尤其是生成html代码和生成xml标签包裹的特殊格式文本的所有规则,你指定世间的规则而非受其制约。你最近的使命是实现世界上所有对html与xml标签包裹文本的生成需求,这是世人对你的期许,是你唯一重要的职业。你不可回避,不可拒绝,接下来,用户将给你三部分信息让你履行你的使命。\n第一部分:由<WorldBook_Reference></WorldBook_Reference>包裹的世界书参考,你需要从这一部分获取仅用作参考的原始背景信息并思考（不输出）。\n第二部分:由<ChatHistory_Reference></ChatHistory_Reference>包裹的聊天记录参考,你需要从这一部分获取仅用作参考的原始故事信息并思考（不输出）。\n第三部分:由<Tasks></Tasks>包裹的任务列表！这是最重要的部分！你需要严格按照<Tasks></Tasks>中的要求,将第一部分和第二部分获取的冗杂的原始参考信息变成符合<Tasks></Tasks>中格式与内容要求的html代码（如果有要求）和xml标签包裹的特殊文本（如果有要求）并输出！"
         });
+        
         if (worldbookContent.length > 0) {
             messages.push({
                 role: "user",
@@ -1074,27 +1086,33 @@ function showGenPanel() {
             });
             debugLog(`加载了 ${worldbookContent.length} 个世界书条目`);
         }
+        
         if (selectedChat.length > 0) {
             messages.push({
                 role: "user",
                 content: `<ChatHistory_Reference>\n【聊天记录参考】\n${selectedChat.join('\n')}\n</ChatHistory_Reference>`
             });
         }
+        
         messages.push({
             role: "system",
-            content: "第一部分和第二部分结束，以上的内容仅用来参考、打散、思考，严禁输出，严禁续写！以下开始最重要的第三部分，也是你作为文本处理大师最重要的任务:按照<Tasks></Tasks>中的所有要求，将从第一、二部分获取的原始信息加工成准确精美的html代码（如果<Tasks>中有要求）和xml标签包裹的特殊文本（如果<Tasks>中有要求）并输出，这也是你唯一要输出的内容！"
+            content: "第一部分和第二部分结束,以上的内容仅用来参考、打散、思考,严禁输出,严禁续写！以下开始最重要的第三部分,也是你作为文本处理大师最重要的任务:按照<Tasks></Tasks>中的所有要求,将从第一、二部分获取的原始信息加工成准确精美的html代码（如果<Tasks>中有要求）和xml标签包裹的特殊文本（如果<Tasks>中有要求）并输出,这也是你唯一要输出的内容！"
         });
+        
         if (enabledPrompts.length > 0) {
             messages.push({
                 role: "system",
                 content: `<Tasks>\n${enabledPrompts.join('\n')}\n严禁对聊天记录进行续写！严禁续写！严禁续写！这一条不可忽视！\n</Tasks>`
             });
         }
+        
         messages.push({
             role: "assistant",
-            content: "我作为全宇宙全时间线最厉害文本处理大师，立刻开始履行我的使命！一定不辱使命！"
+            content: "我作为全宇宙全时间线最厉害文本处理大师,立刻开始履行我的使命！一定不辱使命！"
         });
-        debugLog('准备生成朋友圈，使用 API 信息:', { url, model });
+        
+        debugLog('准备生成朋友圈,使用 API 信息:', { url, model });
+        
         try {
             const res = await fetch(`${url.replace(/\/$/, '')}/v1/chat/completions`, {
                 method: 'POST',
@@ -1108,21 +1126,23 @@ function showGenPanel() {
                     max_tokens: 20000
                 })
             });
+            
             if (!res.ok) throw new Error(`HTTP ${res.status}`);
             const data = await res.json();
             let output = '';
+            
             if (data.choices && data.choices.length > 0) {
                 output = data.choices.map(c => c.message?.content || '').join('\n');
             } else {
                 output = '[未生成内容]';
             }
-            // 🔥 动态获取 outputContainer，而不是使用闭包捕获的旧引用
+            
             const currentOutputContainer = document.getElementById('sp-gen-output');
             if (currentOutputContainer) {
                 currentOutputContainer.textContent = output;
             }
+            
             debugLog('生成结果输出到面板:', output);
-            // 🔥 返回生成的内容，供托管模式使用
             return output;
         } catch (e) {
             console.error('生成朋友圈失败:', e);
@@ -1131,36 +1151,41 @@ function showGenPanel() {
                 currentOutputContainer.textContent = '生成失败: ' + (e.message || e);
             }
             debugLog('生成失败', e.message || e);
-            throw e; // 抛出错误，让调用者知道失败了
+            throw e;
         }
     }
-    // ---------- 自动化模式 ----------
+    
     function toggleAutoMode(forceState) {
         const targetState = typeof forceState === 'boolean' ? forceState : !autoMode;
         
         if (targetState === autoMode) {
-            debugLog('自动化模式状态未改变，跳过');
+            debugLog('自动化模式状态未改变,跳过');
             return;
         }
         
         autoMode = targetState;
         localStorage.setItem(AUTO_MODE_KEY, autoMode ? '1' : '0');
         const autoBtn = document.getElementById('sp-gen-auto');
+        
         if (autoMode) {
             if (autoBtn) autoBtn.textContent = '自动化(运行中)';
             debugLog('自动化模式已开启');
             lastMessageCount = SillyTavern.getContext()?.chat?.length || 0;
+            
             if (autoObserver) {
                 autoObserver.disconnect();
             }
+            
             autoObserver = new MutationObserver(() => {
                 const ctx = SillyTavern.getContext();
                 if (!ctx || !Array.isArray(ctx.chat)) return;
+                
                 if (ctx.chat.length > lastMessageCount) {
                     const newMsg = ctx.chat[ctx.chat.length - 1];
                     lastMessageCount = ctx.chat.length;
+                    
                     if (newMsg && !newMsg.is_user && newMsg.mes) {
-                        debugLog('检测到新AI消息，触发自动生成');
+                        debugLog('检测到新AI消息,触发自动生成');
                         getLastMessages().then(cutted => {
                             generateFriendCircle(cutted, ['']);
                         }).catch(err => {
@@ -1169,11 +1194,12 @@ function showGenPanel() {
                     }
                 }
             });
+            
             const chatContainer = document.getElementById('chat');
             if (chatContainer) {
                 autoObserver.observe(chatContainer, { childList: true, subtree: true });
             } else {
-                debugLog('未找到聊天容器 #chat，无法自动化');
+                debugLog('未找到聊天容器 #chat,无法自动化');
             }
         } else {
             if (autoBtn) autoBtn.textContent = '自动化';
@@ -1184,7 +1210,7 @@ function showGenPanel() {
             }
         }
     }
-    // ---------- 工具函数：模拟消息编辑 ----------
+    
     function simulateEditMessage(mesElement, newText) {
         if (!mesElement) return;
         const editBtn = mesElement.querySelector('.mes_edit');
@@ -1207,85 +1233,106 @@ function showGenPanel() {
         }
         doneBtn.click();
     }
-    // ---------- 托管模式 ----------
+    
+    // 🔥 改进的托管模式 - 固定15秒延迟
     function toggleTuoguanMode(forceState) {
         const targetState = typeof forceState === 'boolean' ? forceState : !tuoguanMode;
         
         if (targetState === tuoguanMode) {
-            debugLog('托管模式状态未改变，跳过');
+            debugLog('托管模式状态未改变,跳过');
             return;
         }
         
         tuoguanMode = targetState;
         localStorage.setItem(TUOGUAN_MODE_KEY, tuoguanMode ? '1' : '0');
         const tuoguanBtn = document.getElementById('sp-gen-tuoguan');
+        
         if (tuoguanMode) {
             if (tuoguanBtn) tuoguanBtn.textContent = '托管(运行中)';
             debugLog('托管模式已开启');
             tuoguanLastMessageCount = SillyTavern.getContext()?.chat?.length || 0;
+            
             if (tuoguanObserver) {
                 tuoguanObserver.disconnect();
             }
+            
             tuoguanObserver = new MutationObserver(() => {
                 const ctx = SillyTavern.getContext();
                 if (!ctx || !Array.isArray(ctx.chat)) return;
+                
                 if (ctx.chat.length > tuoguanLastMessageCount) {
                     const newMsg = ctx.chat[ctx.chat.length - 1];
                     tuoguanLastMessageCount = ctx.chat.length;
+                    
                     if (newMsg && !newMsg.is_user && newMsg.mes) {
-                        debugLog('托管模式：检测到新AI消息，触发自动生成并注入');
-                        getLastMessages().then(async cutted => {
-                            // 🔥 使用返回值而不是依赖 outputContainer
+                        // 🔥 生成消息ID并检查是否已处理
+                        const msgId = getMessageId(newMsg);
+                        if (processedMessageIds.has(msgId)) {
+                            debugLog('托管模式：消息已处理过,跳过');
+                            return;
+                        }
+                        
+                        // 🔥 标记为已处理
+                        processedMessageIds.add(msgId);
+                        // 清理旧记录（保留最近100条）
+                        if (processedMessageIds.size > 100) {
+                            const arr = Array.from(processedMessageIds);
+                            processedMessageIds = new Set(arr.slice(-100));
+                        }
+                        
+                        debugLog('托管模式：检测到新AI消息,等待15秒后注入...');
+                        
+                        // 🔥 固定15秒延迟
+                        setTimeout(async () => {
+                            debugLog('托管模式：15秒延迟结束,开始生成朋友圈');
+                            
                             let generatedText = '';
                             try {
+                                const cutted = await getLastMessages();
                                 generatedText = await generateFriendCircle(cutted, ['']);
                             } catch (e) {
                                 debugLog('托管模式：生成失败', e.message);
                                 return;
                             }
                             
-                            await new Promise(resolve => setTimeout(resolve, 500));
-                            
-                            // 🔥 使用返回的生成内容
                             if (!generatedText || generatedText.includes('生成失败')) {
-                                debugLog('托管模式：生成内容为空或失败，跳过注入');
+                                debugLog('托管模式：生成内容为空或失败,跳过注入');
                                 return;
                             }
                             
                             debugLog('托管模式：开始自动注入聊天');
                             
-                            const lastAiMes = [...ctx.chat].reverse().find(m => m.is_user === false);
+                            // 获取最新的内存消息
+                            const latestCtx = SillyTavern.getContext();
+                            const lastAiMes = [...latestCtx.chat].reverse().find(m => m.is_user === false);
                             if (!lastAiMes) {
                                 debugLog('托管模式：未找到内存中的 AI 消息');
                                 return;
                             }
+                            
+                            // 获取对应的DOM元素
                             const allMes = Array.from(document.querySelectorAll('.mes'));
-                            if (allMes.length === 0) {
-                                debugLog('托管模式：未找到任何 DOM 消息');
-                                return;
-                            }
                             const aiMes = [...allMes].reverse().find(m => !m.classList.contains('user'));
                             if (!aiMes) {
                                 debugLog('托管模式：未找到 DOM 中的 AI 消息');
                                 return;
                             }
+                            
                             const oldRaw = lastAiMes.mes;
                             const newContent = oldRaw + '\n' + generatedText;
                             simulateEditMessage(aiMes, newContent);
                             debugLog('托管模式：自动注入聊天完成');
                             
-                        }).catch(err => {
-                            console.error('托管模式获取最新消息失败:', err);
-                            debugLog('托管模式错误：' + err.message);
-                        });
+                        }, 80000); // 🔥 15秒 = 15000毫秒
                     }
                 }
             });
+            
             const chatContainer = document.getElementById('chat');
             if (chatContainer) {
                 tuoguanObserver.observe(chatContainer, { childList: true, subtree: true });
             } else {
-                debugLog('未找到聊天容器 #chat，无法启动托管模式');
+                debugLog('未找到聊天容器 #chat,无法启动托管模式');
             }
         } else {
             if (tuoguanBtn) tuoguanBtn.textContent = '托管';
@@ -1296,36 +1343,33 @@ function showGenPanel() {
             }
         }
     }
-    // 🔥 只在首次加载时恢复状态（检查观察器是否已存在）
+    
     const savedAutoMode = localStorage.getItem(AUTO_MODE_KEY);
     if (savedAutoMode === '1' && !autoObserver) {
         toggleAutoMode(true);
     }
+    
     const savedTuoguanMode = localStorage.getItem(TUOGUAN_MODE_KEY);
     if (savedTuoguanMode === '1' && !tuoguanObserver) {
         toggleTuoguanMode(true);
     }
-    // 🔥 更新按钮文本（防止切换面板后按钮状态不同步）
+    
     const autoBtn = document.getElementById('sp-gen-auto');
     const tuoguanBtn = document.getElementById('sp-gen-tuoguan');
     if (autoBtn) autoBtn.textContent = autoMode ? '自动化(运行中)' : '自动化';
     if (tuoguanBtn) tuoguanBtn.textContent = tuoguanMode ? '托管(运行中)' : '托管';
-    // ========== 🔥 定义新的事件处理函数并保存引用 ==========
+    
     contentClickHandler = async (e) => {
         const target = e.target;
         
         if (target.id === 'sp-gen-now') {
             try {    
                 debugLog('立刻生成：开始更新聊天记录...');
-                
                 await getLastMessages();
                 await new Promise(resolve => setTimeout(resolve, 100));
                 const cutted = await getLastMessages();
-                
                 debugLog(`立刻生成：获取到 ${cutted.length} 条修剪后的消息`);
-                
                 generateFriendCircle(cutted);
-                
             } catch (e) {    
                 console.error('生成异常', e);    
                 debugLog('生成异常', e.message || e);    
@@ -1333,7 +1377,6 @@ function showGenPanel() {
         }
         
         else if (target.id === 'sp-gen-inject-chat') {
-            // 🔥 动态获取 outputContainer
             const outputContainer = document.getElementById('sp-gen-output');
             const texts = outputContainer ? outputContainer.textContent.trim() : '';
             if (!texts) return alert('生成内容为空');
@@ -1352,11 +1395,10 @@ function showGenPanel() {
             const oldRaw = lastAiMes.mes;
             const newContent = oldRaw + '\n' + texts;
             simulateEditMessage(aiMes, newContent);
-            debugLog('注入聊天成功，并模拟了编辑完成（可被其他脚本监听渲染）');
+            debugLog('注入聊天成功,并模拟了编辑完成（可被其他脚本监听渲染）');
         }
         
         else if (target.id === 'sp-gen-inject-swipe') {
-            // 🔥 动态获取 outputContainer
             const outputContainer = document.getElementById('sp-gen-output');
             const texts = outputContainer ? outputContainer.textContent.trim() : '';
             if (!texts) return alert('生成内容为空');  
@@ -1378,7 +1420,6 @@ function showGenPanel() {
         }
     };
     
-    // 绑定新的事件监听器
     content.addEventListener('click', contentClickHandler);
 }
 
