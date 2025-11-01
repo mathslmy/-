@@ -954,6 +954,7 @@ let autoMode = false;
 let lastMessageCount = 0;
 let autoObserver = null;
 let tuoguanMode = false;
+let tuoguanEventHandler = null;
 let tuoguanLastMessageCount = 0;
 let tuoguanObserver = null;
 const AUTO_MODE_KEY = 'friendCircleAutoMode';
@@ -966,7 +967,7 @@ let processedMessageIds = new Set();
 // 🔥 新增：生成消息的唯一ID
 function getMessageId(msg) {
     // 使用消息内容的前50字符 + 时间戳作为ID
-    return `${msg.mes?.substring(0, 50)}_${msg.send_date || Date.now()}`;
+    return `${msg.mes?.substring(0, 10)}_${msg.send_date || Date.now()}`;
 }
 
 function showGenPanel() {  
@@ -1235,114 +1236,114 @@ function showGenPanel() {
     }
     
     // 🔥 改进的托管模式 - 固定15秒延迟
-    function toggleTuoguanMode(forceState) {
-        const targetState = typeof forceState === 'boolean' ? forceState : !tuoguanMode;
+function toggleTuoguanMode(forceState) {
+    const targetState = typeof forceState === 'boolean' ? forceState : !tuoguanMode;
+    
+    if (targetState === tuoguanMode) {
+        debugLog('托管模式状态未改变,跳过');
+        return;
+    }
+    
+    tuoguanMode = targetState;
+    localStorage.setItem(TUOGUAN_MODE_KEY, tuoguanMode ? '1' : '0');
+    const tuoguanBtn = document.getElementById('sp-gen-tuoguan');
+    
+    if (tuoguanMode) {
+        if (tuoguanBtn) tuoguanBtn.textContent = '托管(运行中)';
+        debugLog('托管模式已开启，使用官方事件监听');
         
-        if (targetState === tuoguanMode) {
-            debugLog('托管模式状态未改变,跳过');
-            return;
-        }
+        // 🔥 使用官方事件系统
+        const { eventSource, event_types } = SillyTavern.getContext();
         
-        tuoguanMode = targetState;
-        localStorage.setItem(TUOGUAN_MODE_KEY, tuoguanMode ? '1' : '0');
-        const tuoguanBtn = document.getElementById('sp-gen-tuoguan');
-        
-        if (tuoguanMode) {
-            if (tuoguanBtn) tuoguanBtn.textContent = '托管(运行中)';
-            debugLog('托管模式已开启');
-            tuoguanLastMessageCount = SillyTavern.getContext()?.chat?.length || 0;
+        // 定义事件处理函数
+        tuoguanEventHandler = async (data) => {
+            debugLog('托管模式：检测到 CHARACTER_MESSAGE_RENDERED 事件', data);
             
-            if (tuoguanObserver) {
-                tuoguanObserver.disconnect();
+            const ctx = SillyTavern.getContext();
+            if (!ctx || !Array.isArray(ctx.chat) || ctx.chat.length === 0) {
+                debugLog('托管模式：聊天上下文无效');
+                return;
             }
             
-            tuoguanObserver = new MutationObserver(() => {
-                const ctx = SillyTavern.getContext();
-                if (!ctx || !Array.isArray(ctx.chat)) return;
-                
-                if (ctx.chat.length > tuoguanLastMessageCount) {
-                    const newMsg = ctx.chat[ctx.chat.length - 1];
-                    tuoguanLastMessageCount = ctx.chat.length;
-                    
-                    if (newMsg && !newMsg.is_user && newMsg.mes) {
-                        // 🔥 生成消息ID并检查是否已处理
-                        const msgId = getMessageId(newMsg);
-                        if (processedMessageIds.has(msgId)) {
-                            debugLog('托管模式：消息已处理过,跳过');
-                            return;
-                        }
-                        
-                        // 🔥 标记为已处理
-                        processedMessageIds.add(msgId);
-                        // 清理旧记录（保留最近100条）
-                        if (processedMessageIds.size > 100) {
-                            const arr = Array.from(processedMessageIds);
-                            processedMessageIds = new Set(arr.slice(-100));
-                        }
-                        
-                        debugLog('托管模式：检测到新AI消息,等待15秒后注入...');
-                        
-                        // 🔥 固定15秒延迟
-                        setTimeout(async () => {
-                            debugLog('托管模式：15秒延迟结束,开始生成朋友圈');
-                            
-                            let generatedText = '';
-                            try {
-                                const cutted = await getLastMessages();
-                                generatedText = await generateFriendCircle(cutted, ['']);
-                            } catch (e) {
-                                debugLog('托管模式：生成失败', e.message);
-                                return;
-                            }
-                            
-                            if (!generatedText || generatedText.includes('生成失败')) {
-                                debugLog('托管模式：生成内容为空或失败,跳过注入');
-                                return;
-                            }
-                            
-                            debugLog('托管模式：开始自动注入聊天');
-                            
-                            // 获取最新的内存消息
-                            const latestCtx = SillyTavern.getContext();
-                            const lastAiMes = [...latestCtx.chat].reverse().find(m => m.is_user === false);
-                            if (!lastAiMes) {
-                                debugLog('托管模式：未找到内存中的 AI 消息');
-                                return;
-                            }
-                            
-                            // 获取对应的DOM元素
-                            const allMes = Array.from(document.querySelectorAll('.mes'));
-                            const aiMes = [...allMes].reverse().find(m => !m.classList.contains('user'));
-                            if (!aiMes) {
-                                debugLog('托管模式：未找到 DOM 中的 AI 消息');
-                                return;
-                            }
-                            
-                            const oldRaw = lastAiMes.mes;
-                            const newContent = oldRaw + '\n' + generatedText;
-                            simulateEditMessage(aiMes, newContent);
-                            debugLog('托管模式：自动注入聊天完成');
-                            
-                        }, 80000); // 🔥 15秒 = 15000毫秒
-                    }
-                }
-            });
+            const lastMsg = ctx.chat[ctx.chat.length - 1];
+            if (!lastMsg || lastMsg.is_user) {
+                debugLog('托管模式：最后一条消息不是AI消息，跳过');
+                return;
+            }
             
-            const chatContainer = document.getElementById('chat');
-            if (chatContainer) {
-                tuoguanObserver.observe(chatContainer, { childList: true, subtree: true });
-            } else {
-                debugLog('未找到聊天容器 #chat,无法启动托管模式');
+            // 🔥 生成消息ID并检查是否已处理
+            const msgId = getMessageId(lastMsg);
+            if (processedMessageIds.has(msgId)) {
+                debugLog('托管模式：消息已处理过,跳过');
+                return;
             }
-        } else {
-            if (tuoguanBtn) tuoguanBtn.textContent = '托管';
-            debugLog('托管模式已关闭');
-            if (tuoguanObserver) {
-                tuoguanObserver.disconnect();
-                tuoguanObserver = null;
+            
+            // 🔥 标记为已处理
+            processedMessageIds.add(msgId);
+            // 清理旧记录（保留最近100条）
+            if (processedMessageIds.size > 100) {
+                const arr = Array.from(processedMessageIds);
+                processedMessageIds = new Set(arr.slice(-100));
             }
+            
+            debugLog('托管模式：开始生成朋友圈');
+            
+            let generatedText = '';
+            try {
+                const cutted = await getLastMessages();
+                generatedText = await generateFriendCircle(cutted, ['']);
+            } catch (e) {
+                debugLog('托管模式：生成失败', e.message);
+                return;
+            }
+            
+            if (!generatedText || generatedText.includes('生成失败')) {
+                debugLog('托管模式：生成内容为空或失败,跳过注入');
+                return;
+            }
+            
+            debugLog('托管模式：开始自动注入聊天');
+            
+            // 获取最新的内存消息
+            const latestCtx = SillyTavern.getContext();
+            const lastAiMes = [...latestCtx.chat].reverse().find(m => m.is_user === false);
+            if (!lastAiMes) {
+                debugLog('托管模式：未找到内存中的 AI 消息');
+                return;
+            }
+            
+            // 获取对应的DOM元素
+            const allMes = Array.from(document.querySelectorAll('.mes'));
+            const aiMes = [...allMes].reverse().find(m => !m.classList.contains('user'));
+            if (!aiMes) {
+                debugLog('托管模式：未找到 DOM 中的 AI 消息');
+                return;
+            }
+            
+            const oldRaw = lastAiMes.mes;
+            const newContent = oldRaw + '\n' + generatedText;
+            simulateEditMessage(aiMes, newContent);
+            debugLog('托管模式：自动注入聊天完成');
+        };
+        
+        // 🔥 监听 CHARACTER_MESSAGE_RENDERED 事件
+        // 这个事件在AI消息完全渲染完成后触发，支持流式和非流式
+        eventSource.on(event_types.CHARACTER_MESSAGE_RENDERED, tuoguanEventHandler);
+        debugLog('托管模式：已绑定 CHARACTER_MESSAGE_RENDERED 事件');
+        
+    } else {
+        if (tuoguanBtn) tuoguanBtn.textContent = '托管';
+        debugLog('托管模式已关闭');
+        
+        // 🔥 移除事件监听
+        if (tuoguanEventHandler) {
+            const { eventSource, event_types } = SillyTavern.getContext();
+            eventSource.removeListener(event_types.CHARACTER_MESSAGE_RENDERED, tuoguanEventHandler);
+            tuoguanEventHandler = null;
+            debugLog('托管模式：已移除事件监听');
         }
     }
+}
     
     const savedAutoMode = localStorage.getItem(AUTO_MODE_KEY);
     if (savedAutoMode === '1' && !autoObserver) {
