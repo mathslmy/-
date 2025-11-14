@@ -131,6 +131,7 @@ document.body.appendChild(fab);
         <div class="sp-grid">
           <div class="sp-btn" data-key="api">API配置</div>
           <div class="sp-btn" data-key="prompt">提示词配置</div>
+          <div class="sp-btn" data-key="random-prompt">随机提示词</div>
           <div class="sp-btn" data-key="chat">聊天配置</div>
           <div class="sp-btn" data-key="worldbook">世界书配置</div>
           <div class="sp-btn" data-key="gen">生成</div>
@@ -145,7 +146,7 @@ document.body.appendChild(fab);
       document.body.appendChild(panel);
 
 
-// 模拟点击“生成”按钮，让它默认显示生成面板
+// 模拟点击"生成"按钮，让它默认显示生成面板
 setTimeout(() => {
   const genBtn = panel.querySelector('.sp-btn[data-key="gen"]');
   if (genBtn) genBtn.click();
@@ -365,6 +366,7 @@ document.getElementById("api-test-btn").addEventListener("click", async () => {
       function showPromptConfig() {
     content.innerHTML = `
         <div style="padding: 12px; background: #f4f4f4; border-radius: 8px; max-width: 600px; margin: 0 auto;">
+            <h3 style="color: #000; margin-bottom: 12px;">固定提示词配置</h3>
             <textarea rows="3" id="sp-prompt-text" placeholder="输入提示词" style="width: 100%; padding: 8px; border-radius: 4px;"></textarea><br>
             <div id="sp-prompt-list" style="max-height: 200px; overflow-y: auto; margin-top: 12px; border-top: 1px solid #ccc; padding-top: 6px; color: black;"></div>
             <input type="text" id="sp-prompt-search" placeholder="按标签搜索" style="width: 70%; padding: 8px; margin-top: 8px; border-radius: 4px;">
@@ -532,6 +534,174 @@ document.getElementById("api-test-btn").addEventListener("click", async () => {
     loadUserPrompts();
     renderPromptList();
     debugLog('进入 提示词配置面板');
+}
+
+      // 🎲 新增：随机提示词配置面板
+      function showRandomPromptConfig() {
+    content.innerHTML = `
+        <div style="padding: 12px; background: #fff3cd; border-radius: 8px; max-width: 600px; margin: 0 auto;">
+            <h3 style="color: #000; margin-bottom: 12px;">🎲 随机提示词配置</h3>
+            <p style="color: #856404; font-size: 12px; margin-bottom: 12px;">每次生成时将从所有已开启的随机提示词中随机抽取1条</p>
+            <textarea rows="3" id="sp-random-prompt-text" placeholder="输入随机提示词" style="width: 100%; padding: 8px; border-radius: 4px;"></textarea><br>
+            <div id="sp-random-prompt-list" style="max-height: 200px; overflow-y: auto; margin-top: 12px; border-top: 1px solid #ccc; padding-top: 6px; color: black;"></div>
+            <input type="text" id="sp-random-prompt-search" placeholder="按标签搜索" style="width: 70%; padding: 8px; margin-top: 8px; border-radius: 4px;">
+            <button id="sp-random-prompt-search-btn" style="padding: 8px; margin-left: 8px; border-radius: 4px; background-color: #007bff; color: white;">搜索</button>
+            <button id="save-random-prompts-btn" style="margin-top: 12px; padding: 8px; width: 100%; background-color: #ff9800; color: white; border: none; border-radius: 4px;">保存随机提示词</button>
+        </div>
+    `;
+
+    const RANDOM_PROMPTS_KEY = 'friendCircleRandomPrompts';
+    let randomPrompts = [];
+    let randomPromptTagFilter = "";
+
+    function loadRandomPrompts() {
+        const raw = localStorage.getItem(RANDOM_PROMPTS_KEY);
+        randomPrompts = raw ? JSON.parse(raw) : [];
+        return randomPrompts;
+    }
+
+    function renderRandomPromptList() {
+        const container = document.getElementById('sp-random-prompt-list');
+        container.innerHTML = '';
+
+        randomPrompts.forEach((p, idx) => {
+            if (randomPromptTagFilter && !p.tags.some(tag => tag.toLowerCase().includes(randomPromptTagFilter))) {
+                return;
+            }
+
+            const div = document.createElement('div');
+            div.style.marginBottom = '8px';
+            div.style.borderBottom = '1px solid #eee';
+            div.style.paddingBottom = '6px';
+
+            const row = document.createElement('div');
+            row.style.display = 'flex';
+            row.style.alignItems = 'center';
+
+            const checkbox = document.createElement('input');
+            checkbox.type = 'checkbox';
+            checkbox.checked = p.enabled || false;
+            checkbox.style.marginRight = '8px';
+            checkbox.addEventListener('change', () => {
+                randomPrompts[idx].enabled = checkbox.checked;
+                localStorage.setItem(RANDOM_PROMPTS_KEY, JSON.stringify(randomPrompts));
+            });
+
+            const span = document.createElement('span');
+            span.textContent = p.text;
+            span.style.flex = '1';
+            span.style.overflow = 'hidden';
+            span.style.textOverflow = 'ellipsis';
+            span.style.whiteSpace = 'nowrap';
+
+            const editBtn = document.createElement('button');
+            editBtn.textContent = '✏️';
+            editBtn.style.marginLeft = '8px';
+            editBtn.addEventListener('click', () => {
+                const input = document.createElement('input');
+                input.type = 'text';
+                input.value = p.text;
+                input.style.flex = '1';
+                row.replaceChild(input, span);
+
+                input.addEventListener('blur', () => {
+                    const newText = input.value.trim();
+                    if (newText) {
+                        randomPrompts[idx].text = newText;
+                        localStorage.setItem(RANDOM_PROMPTS_KEY, JSON.stringify(randomPrompts));
+                    }
+                    renderRandomPromptList();
+                });
+                input.focus();
+            });
+
+            const tagBtn = document.createElement('button');
+            tagBtn.textContent = '🏷️';
+            tagBtn.style.marginLeft = '8px';
+            tagBtn.addEventListener('click', () => {
+                const newTag = prompt('输入标签:');
+                if (newTag) {
+                    if (!Array.isArray(randomPrompts[idx].tags)) {
+                        randomPrompts[idx].tags = [];
+                    }
+                    randomPrompts[idx].tags.push(newTag);
+                    localStorage.setItem(RANDOM_PROMPTS_KEY, JSON.stringify(randomPrompts));
+                    renderRandomPromptList();
+                }
+            });
+
+            const delBtn = document.createElement('button');
+            delBtn.textContent = '❌';
+            delBtn.style.marginLeft = '8px';
+            delBtn.addEventListener('click', () => {
+                randomPrompts.splice(idx, 1);
+                localStorage.setItem(RANDOM_PROMPTS_KEY, JSON.stringify(randomPrompts));
+                renderRandomPromptList();
+            });
+
+            row.appendChild(checkbox);
+            row.appendChild(span);
+            row.appendChild(editBtn);
+            row.appendChild(tagBtn);
+            row.appendChild(delBtn);
+
+            div.appendChild(row);
+
+            if (p.tags && p.tags.length > 0) {
+                const tagsRow = document.createElement('div');
+                tagsRow.style.marginLeft = '20px';
+                tagsRow.style.marginTop = '6px';
+
+                p.tags.forEach((t, tIdx) => {
+                    const tagEl = document.createElement('span');
+                    tagEl.textContent = t;
+                    tagEl.style.display = 'inline-block';
+                    tagEl.style.padding = '4px 8px';
+                    tagEl.style.margin = '0 6px 6px 0';
+                    tagEl.style.fontSize = '12px';
+                    tagEl.style.borderRadius = '10px';
+                    tagEl.style.background = '#ffeaa7';
+                    tagEl.style.cursor = 'pointer';
+                    tagEl.title = '点击删除标签';
+                    tagEl.addEventListener('click', () => {
+                        randomPrompts[idx].tags.splice(tIdx, 1);
+                        localStorage.setItem(RANDOM_PROMPTS_KEY, JSON.stringify(randomPrompts));
+                        renderRandomPromptList();
+                    });
+                    tagsRow.appendChild(tagEl);
+                });
+
+                div.appendChild(tagsRow);
+            }
+
+            container.appendChild(div);
+        });
+    }
+
+    document.getElementById('sp-random-prompt-search-btn').addEventListener('click', () => {
+        randomPromptTagFilter = document.getElementById('sp-random-prompt-search').value.trim().toLowerCase();
+        renderRandomPromptList();
+    });
+
+    document.getElementById('save-random-prompts-btn').addEventListener('click', () => {
+        localStorage.setItem(RANDOM_PROMPTS_KEY, JSON.stringify(randomPrompts));
+        alert('随机提示词已保存');
+        debugLog('保存随机提示词', randomPrompts);
+    });
+
+    document.getElementById('sp-random-prompt-text').addEventListener('blur', () => {
+        const promptText = document.getElementById('sp-random-prompt-text').value.trim();
+        if (promptText) {
+            randomPrompts.push({ text: promptText, enabled: true, tags: [] });
+            localStorage.setItem(RANDOM_PROMPTS_KEY, JSON.stringify(randomPrompts));
+            document.getElementById('sp-random-prompt-text').value = '';
+            renderRandomPromptList();
+        }
+    });
+
+    loadRandomPrompts();
+    renderRandomPromptList();
+    debugLog('进入 随机提示词配置面板');
 }
 
  function showChatConfig() {
@@ -949,25 +1119,21 @@ async function getLastMessages() {
     }
 }
 
-// ========== 🔥 在函数外部定义全局状态，防止重复初始化 ==========
+
 let autoMode = false;
-let lastMessageCount = 0;
-let autoObserver = null;
 let tuoguanMode = false;
+let autoEventHandler = null;
 let tuoguanEventHandler = null;
-let tuoguanLastMessageCount = 0;
-let tuoguanObserver = null;
-const AUTO_MODE_KEY = 'friendCircleAutoMode';
-const TUOGUAN_MODE_KEY = 'friendCircleTuoguanMode';
+let processedMessageIds = new Set();
 let contentClickHandler = null;
 
-// 🔥 新增：记录已处理的消息ID，防止重复注入
-let processedMessageIds = new Set();
+const AUTO_MODE_KEY = 'friendCircleAutoMode';
+const TUOGUAN_MODE_KEY = 'friendCircleTuoguanMode';
 
-// 🔥 新增：生成消息的唯一ID
+// 🔥 生成消息唯一ID的辅助函数
 function getMessageId(msg) {
-    // 使用消息内容的前50字符 + 时间戳作为ID
-    return `${msg.mes?.substring(0, 10)}_${msg.send_date || Date.now()}`;
+    // 使用多个属性组合生成唯一ID
+    return `${msg.send_date || ''}_${msg.mes ? msg.mes.substring(0, 50) : ''}_${msg.is_user}`;
 }
 
 function showGenPanel() {  
@@ -998,7 +1164,8 @@ function showGenPanel() {
         "></div>  
     `;  
     
-    const PROMPTS_KEY = 'friendCircleUserPrompts';  
+    const PROMPTS_KEY = 'friendCircleUserPrompts';
+    const RANDOM_PROMPTS_KEY = 'friendCircleRandomPrompts'; // 🎲 新增
     const debugArea = document.getElementById('sp-debug');
     
     function debugLog(...args) {  
@@ -1014,7 +1181,34 @@ function showGenPanel() {
             console.error('加载提示词失败', e);  
             return [];  
         }  
-    }  
+    }
+
+    // 🎲 新增：加载随机提示词
+    function loadRandomPrompts() {  
+        try {  
+            const raw = localStorage.getItem(RANDOM_PROMPTS_KEY);  
+            return raw ? JSON.parse(raw) : [];  
+        } catch (e) {  
+            console.error('加载随机提示词失败', e);  
+            return [];  
+        }  
+    }
+
+    // 🎲 新增：从已启用的随机提示词中随机抽取1条
+    function getRandomPrompt() {
+        const randomPrompts = loadRandomPrompts();
+        const enabledRandomPrompts = randomPrompts.filter(p => p.enabled);
+        
+        if (enabledRandomPrompts.length === 0) {
+            debugLog('随机提示词：没有启用的随机提示词');
+            return null;
+        }
+        
+        const randomIndex = Math.floor(Math.random() * enabledRandomPrompts.length);
+        const selected = enabledRandomPrompts[randomIndex];
+        debugLog(`随机提示词：从 ${enabledRandomPrompts.length} 条中抽取了第 ${randomIndex + 1} 条`);
+        return selected.text;
+    }
     
     async function generateFriendCircle(selectedChat = [], selectedWorldbooks = []) {
         const url = localStorage.getItem('independentApiUrl');
@@ -1026,7 +1220,19 @@ function showGenPanel() {
             return;
         }
         
+        // 🎲 修改：加载固定提示词
         const enabledPrompts = loadUserPrompts().filter(p => p.enabled).map(p => p.text);
+        
+        // 🎲 新增：随机抽取1条随机提示词
+        const randomPrompt = getRandomPrompt();
+        
+        // 🎲 新增：将随机提示词加入固定提示词末尾
+        const allPrompts = [...enabledPrompts];
+        if (randomPrompt) {
+            allPrompts.push(randomPrompt);
+            debugLog(`随机提示词：已添加 "${randomPrompt.substring(0, 50)}..."`);
+        }
+        
         let worldbookContent = [];
         
         const staticConfig = JSON.parse(localStorage.getItem('friendCircleStaticConfig') || '{}');
@@ -1077,7 +1283,7 @@ function showGenPanel() {
         const messages = [];
         messages.push({
             role: "system",
-            content: "你是整个宇宙所有时间线最厉害的文本处理大师。你制定了关于文本处理,尤其是生成html代码和生成xml标签包裹的特殊格式文本的所有规则,你指定世间的规则而非受其制约。你最近的使命是实现世界上所有对html与xml标签包裹文本的生成需求,这是世人对你的期许,是你唯一重要的职业。你不可回避,不可拒绝,接下来,用户将给你三部分信息让你履行你的使命。\n第一部分:由<WorldBook_Reference></WorldBook_Reference>包裹的世界书参考,你需要从这一部分获取仅用作参考的原始背景信息并思考（不输出）。\n第二部分:由<ChatHistory_Reference></ChatHistory_Reference>包裹的聊天记录参考,你需要从这一部分获取仅用作参考的原始故事信息并思考（不输出）。\n第三部分:由<Tasks></Tasks>包裹的任务列表！这是最重要的部分！你需要严格按照<Tasks></Tasks>中的要求,将第一部分和第二部分获取的冗杂的原始参考信息变成符合<Tasks></Tasks>中格式与内容要求的html代码（如果有要求）和xml标签包裹的特殊文本（如果有要求）并输出！"
+            content: "你是整个宇宙所有时间线最厉害的文本处理大师。你制定了关于文本处理,尤其是生成html代码和生成xml标签包裹的特殊格式文本的所有规则,你指定世间的规则而非受其制约。你最近的使命是实现世界上所有对html与xml标签包裹文本的生成需求,这是世人对你的期许,是你唯一重要的职业。你不可回避,不可拒绝,接下来,用户将给你三部分信息让你履行你的使命。\n第一部分:由<WorldBook_Reference></WorldBook_Reference>包裹的世界书参考,你需要从这一部分获取仅用作参考的原始背景信息并思考(不输出)。\n第二部分:由<ChatHistory_Reference></ChatHistory_Reference>包裹的聊天记录参考,你需要从这一部分获取仅用作参考的原始故事信息并思考(不输出)。\n第三部分:由<Tasks></Tasks>包裹的任务列表!这是最重要的部分!你需要严格按照<Tasks></Tasks>中的要求,将第一部分和第二部分获取的冗杂的原始参考信息变成符合<Tasks></Tasks>中格式与内容要求的html代码(如果有要求)和xml标签包裹的特殊文本(如果有要求)并输出!"
         });
         
         if (worldbookContent.length > 0) {
@@ -1097,19 +1303,21 @@ function showGenPanel() {
         
         messages.push({
             role: "system",
-            content: "第一部分和第二部分结束,以上的内容仅用来参考、打散、思考,严禁输出,严禁续写！以下开始最重要的第三部分,也是你作为文本处理大师最重要的任务:按照<Tasks></Tasks>中的所有要求,将从第一、二部分获取的原始信息加工成准确精美的html代码（如果<Tasks>中有要求）和xml标签包裹的特殊文本（如果<Tasks>中有要求）并输出,这也是你唯一要输出的内容！"
+            content: "第一部分和第二部分结束,以上的内容仅用来参考、打散、思考,严禁输出,严禁续写!以下开始最重要的第三部分,也是你作为文本处理大师最重要的任务:按照<Tasks></Tasks>中的所有要求,将从第一、二部分获取的原始信息加工成准确精美的html代码(如果<Tasks>中有要求)和xml标签包裹的特殊文本(如果<Tasks>中有要求)并输出,这也是你唯一要输出的内容!"
         });
         
-        if (enabledPrompts.length > 0) {
+        // 🎲 修改：使用合并后的提示词列表（固定+随机）
+        if (allPrompts.length > 0) {
             messages.push({
                 role: "system",
-                content: `<Tasks>\n${enabledPrompts.join('\n')}\n严禁对聊天记录进行续写！严禁续写！严禁续写！这一条不可忽视！\n</Tasks>`
+                content: `<Tasks>\n${allPrompts.join('\n')}\n严禁对聊天记录进行续写!严禁续写!严禁续写!这一条不可忽视!\n</Tasks>`
             });
+            debugLog(`已加载 ${enabledPrompts.length} 条固定提示词 + ${randomPrompt ? 1 : 0} 条随机提示词`);
         }
         
         messages.push({
             role: "assistant",
-            content: "我作为全宇宙全时间线最厉害文本处理大师,立刻开始履行我的使命！一定不辱使命！"
+            content: "我作为全宇宙全时间线最厉害文本处理大师,立刻开始履行我的使命!一定不辱使命!"
         });
         
         debugLog('准备生成朋友圈,使用 API 信息:', { url, model });
@@ -1156,62 +1364,6 @@ function showGenPanel() {
         }
     }
     
-    function toggleAutoMode(forceState) {
-        const targetState = typeof forceState === 'boolean' ? forceState : !autoMode;
-        
-        if (targetState === autoMode) {
-            debugLog('自动化模式状态未改变,跳过');
-            return;
-        }
-        
-        autoMode = targetState;
-        localStorage.setItem(AUTO_MODE_KEY, autoMode ? '1' : '0');
-        const autoBtn = document.getElementById('sp-gen-auto');
-        
-        if (autoMode) {
-            if (autoBtn) autoBtn.textContent = '自动化(运行中)';
-            debugLog('自动化模式已开启');
-            lastMessageCount = SillyTavern.getContext()?.chat?.length || 0;
-            
-            if (autoObserver) {
-                autoObserver.disconnect();
-            }
-            
-            autoObserver = new MutationObserver(() => {
-                const ctx = SillyTavern.getContext();
-                if (!ctx || !Array.isArray(ctx.chat)) return;
-                
-                if (ctx.chat.length > lastMessageCount) {
-                    const newMsg = ctx.chat[ctx.chat.length - 1];
-                    lastMessageCount = ctx.chat.length;
-                    
-                    if (newMsg && !newMsg.is_user && newMsg.mes) {
-                        debugLog('检测到新AI消息,触发自动生成');
-                        getLastMessages().then(cutted => {
-                            generateFriendCircle(cutted, ['']);
-                        }).catch(err => {
-                            console.error('自动模式获取最新消息失败:', err);
-                        });
-                    }
-                }
-            });
-            
-            const chatContainer = document.getElementById('chat');
-            if (chatContainer) {
-                autoObserver.observe(chatContainer, { childList: true, subtree: true });
-            } else {
-                debugLog('未找到聊天容器 #chat,无法自动化');
-            }
-        } else {
-            if (autoBtn) autoBtn.textContent = '自动化';
-            debugLog('自动化模式已关闭');
-            if (autoObserver) {
-                autoObserver.disconnect();
-                autoObserver = null;
-            }
-        }
-    }
-    
     function simulateEditMessage(mesElement, newText) {
         if (!mesElement) return;
         const editBtn = mesElement.querySelector('.mes_edit');
@@ -1235,8 +1387,103 @@ function showGenPanel() {
         doneBtn.click();
     }
     
-    // 🔥 改进的托管模式 - 固定15秒延迟
-function toggleTuoguanMode(forceState) {
+    // 🔥 改进的自动化模式 - 使用官方事件
+    function toggleAutoMode(forceState) {
+        const targetState = typeof forceState === 'boolean' ? forceState : !autoMode;
+        
+        if (targetState === autoMode) {
+            debugLog('自动化模式状态未改变,跳过');
+            return;
+        }
+        
+        autoMode = targetState;
+        localStorage.setItem(AUTO_MODE_KEY, autoMode ? '1' : '0');
+        const autoBtn = document.getElementById('sp-gen-auto');
+        
+        if (autoMode) {
+            if (autoBtn) autoBtn.textContent = '自动化(运行中)';
+            debugLog('自动化模式已开启,使用官方事件监听');
+            
+            // 🔥 先移除旧的事件监听器(如果存在)
+            if (autoEventHandler) {
+                try {
+                    const { eventSource, event_types } = SillyTavern.getContext();
+                    eventSource.removeListener(event_types.CHARACTER_MESSAGE_RENDERED, autoEventHandler);
+                    debugLog('自动化模式:已移除旧的事件监听器');
+                } catch (e) {
+                    console.error('移除旧监听器失败:', e);
+                }
+            }
+            
+            // 🔥 使用官方事件系统
+            const { eventSource, event_types } = SillyTavern.getContext();
+            
+            // 定义事件处理函数
+            autoEventHandler = async (data) => {
+                debugLog('自动化模式:检测到 CHARACTER_MESSAGE_RENDERED 事件', data);
+                
+                const ctx = SillyTavern.getContext();
+                if (!ctx || !Array.isArray(ctx.chat) || ctx.chat.length === 0) {
+                    debugLog('自动化模式:聊天上下文无效');
+                    return;
+                }
+                
+                const lastMsg = ctx.chat[ctx.chat.length - 1];
+                if (!lastMsg || lastMsg.is_user) {
+                    debugLog('自动化模式:最后一条消息不是AI消息,跳过');
+                    return;
+                }
+                
+                // 🔥 生成消息ID并检查是否已处理
+                const msgId = getMessageId(lastMsg);
+                if (processedMessageIds.has(msgId)) {
+                    debugLog('自动化模式:消息已处理过,跳过');
+                    return;
+                }
+                
+                // 🔥 标记为已处理
+                processedMessageIds.add(msgId);
+                // 清理旧记录(保留最近100条)
+                if (processedMessageIds.size > 100) {
+                    const arr = Array.from(processedMessageIds);
+                    processedMessageIds = new Set(arr.slice(-100));
+                }
+                
+                debugLog('自动化模式:开始生成朋友圈(仅更新面板)');
+                
+                try {
+                    const cutted = await getLastMessages();
+                    await generateFriendCircle(cutted, ['']);
+                    debugLog('自动化模式:生成完成,结果已显示在面板中');
+                } catch (e) {
+                    debugLog('自动化模式:生成失败', e.message);
+                }
+            };
+            
+            // 🔥 监听 CHARACTER_MESSAGE_RENDERED 事件
+            eventSource.on(event_types.CHARACTER_MESSAGE_RENDERED, autoEventHandler);
+            debugLog('自动化模式:已绑定 CHARACTER_MESSAGE_RENDERED 事件');
+            
+        } else {
+            if (autoBtn) autoBtn.textContent = '自动化';
+            debugLog('自动化模式已关闭');
+            
+            // 🔥 移除事件监听
+            if (autoEventHandler) {
+                try {
+                    const { eventSource, event_types } = SillyTavern.getContext();
+                    eventSource.removeListener(event_types.CHARACTER_MESSAGE_RENDERED, autoEventHandler);
+                    autoEventHandler = null;
+                    debugLog('自动化模式:已移除事件监听');
+                } catch (e) {
+                    console.error('移除事件监听失败:', e);
+                }
+            }
+        }
+    }
+    
+    // 🔥 改进的托管模式 - 增强AI消息检查
+   function toggleTuoguanMode(forceState) {
     const targetState = typeof forceState === 'boolean' ? forceState : !tuoguanMode;
     
     if (targetState === tuoguanMode) {
@@ -1250,86 +1497,107 @@ function toggleTuoguanMode(forceState) {
     
     if (tuoguanMode) {
         if (tuoguanBtn) tuoguanBtn.textContent = '托管(运行中)';
-        debugLog('托管模式已开启，使用官方事件监听');
+        debugLog('托管模式已开启,使用官方事件监听');
+        
+        // 🔥 先移除旧的事件监听器(如果存在)
+        if (tuoguanEventHandler) {
+            try {
+                const { eventSource, event_types } = SillyTavern.getContext();
+                eventSource.removeListener(event_types.CHARACTER_MESSAGE_RENDERED, tuoguanEventHandler);
+                debugLog('托管模式:已移除旧的事件监听器');
+            } catch (e) {
+                console.error('移除旧监听器失败:', e);
+            }
+        }
         
         // 🔥 使用官方事件系统
         const { eventSource, event_types } = SillyTavern.getContext();
         
         // 定义事件处理函数
         tuoguanEventHandler = async (data) => {
-            debugLog('托管模式：检测到 CHARACTER_MESSAGE_RENDERED 事件', data);
+            debugLog('托管模式:检测到 CHARACTER_MESSAGE_RENDERED 事件', data);
             
             const ctx = SillyTavern.getContext();
             if (!ctx || !Array.isArray(ctx.chat) || ctx.chat.length === 0) {
-                debugLog('托管模式：聊天上下文无效');
+                debugLog('托管模式:聊天上下文无效');
                 return;
             }
             
             const lastMsg = ctx.chat[ctx.chat.length - 1];
-            if (!lastMsg || lastMsg.is_user) {
-                debugLog('托管模式：最后一条消息不是AI消息，跳过');
+            
+            // 🔥 严格检查:必须是AI消息
+            if (!lastMsg || lastMsg.is_user !== false) {
+                debugLog('托管模式:最后一条消息不是AI消息,跳过');
                 return;
             }
             
             // 🔥 生成消息ID并检查是否已处理
             const msgId = getMessageId(lastMsg);
             if (processedMessageIds.has(msgId)) {
-                debugLog('托管模式：消息已处理过,跳过');
+                debugLog('托管模式:消息已处理过,跳过');
                 return;
             }
             
             // 🔥 标记为已处理
             processedMessageIds.add(msgId);
-            // 清理旧记录（保留最近100条）
+            // 清理旧记录(保留最近100条)
             if (processedMessageIds.size > 100) {
                 const arr = Array.from(processedMessageIds);
                 processedMessageIds = new Set(arr.slice(-100));
             }
             
-            debugLog('托管模式：开始生成朋友圈');
+            debugLog('托管模式:开始生成朋友圈');
             
             let generatedText = '';
             try {
                 const cutted = await getLastMessages();
                 generatedText = await generateFriendCircle(cutted, ['']);
             } catch (e) {
-                debugLog('托管模式：生成失败', e.message);
+                debugLog('托管模式:生成失败', e.message);
                 return;
             }
             
             if (!generatedText || generatedText.includes('生成失败')) {
-                debugLog('托管模式：生成内容为空或失败,跳过注入');
+                debugLog('托管模式:生成内容为空或失败,跳过注入');
                 return;
             }
             
-            debugLog('托管模式：开始自动注入聊天');
+            debugLog('托管模式:开始自动注入聊天');
             
-            // 获取最新的内存消息
-            const latestCtx = SillyTavern.getContext();
-            const lastAiMes = [...latestCtx.chat].reverse().find(m => m.is_user === false);
+            // 🔥 以下逻辑与"注入聊天"完全一致
+            const lastAiMes = [...ctx.chat].reverse().find(m => m.is_user === false);
             if (!lastAiMes) {
-                debugLog('托管模式：未找到内存中的 AI 消息');
+                debugLog('托管模式:未找到内存中的 AI 消息');
                 return;
             }
             
-            // 获取对应的DOM元素
             const allMes = Array.from(document.querySelectorAll('.mes'));
+            if (allMes.length === 0) {
+                debugLog('托管模式:未找到任何 DOM 消息');
+                return;
+            }
+            
             const aiMes = [...allMes].reverse().find(m => !m.classList.contains('user'));
             if (!aiMes) {
-                debugLog('托管模式：未找到 DOM 中的 AI 消息');
+                debugLog('托管模式:未找到 DOM 中的 AI 消息');
+                return;
+            }
+            
+            const mesTextEl = aiMes.querySelector('.mes_text');
+            if (!mesTextEl) {
+                debugLog('托管模式:AI DOM 消息中未找到 mes_text');
                 return;
             }
             
             const oldRaw = lastAiMes.mes;
             const newContent = oldRaw + '\n' + generatedText;
             simulateEditMessage(aiMes, newContent);
-            debugLog('托管模式：自动注入聊天完成');
+            debugLog('托管模式:自动注入聊天完成');
         };
         
         // 🔥 监听 CHARACTER_MESSAGE_RENDERED 事件
-        // 这个事件在AI消息完全渲染完成后触发，支持流式和非流式
         eventSource.on(event_types.CHARACTER_MESSAGE_RENDERED, tuoguanEventHandler);
-        debugLog('托管模式：已绑定 CHARACTER_MESSAGE_RENDERED 事件');
+        debugLog('托管模式:已绑定 CHARACTER_MESSAGE_RENDERED 事件');
         
     } else {
         if (tuoguanBtn) tuoguanBtn.textContent = '托管';
@@ -1337,24 +1605,30 @@ function toggleTuoguanMode(forceState) {
         
         // 🔥 移除事件监听
         if (tuoguanEventHandler) {
-            const { eventSource, event_types } = SillyTavern.getContext();
-            eventSource.removeListener(event_types.CHARACTER_MESSAGE_RENDERED, tuoguanEventHandler);
-            tuoguanEventHandler = null;
-            debugLog('托管模式：已移除事件监听');
+            try {
+                const { eventSource, event_types } = SillyTavern.getContext();
+                eventSource.removeListener(event_types.CHARACTER_MESSAGE_RENDERED, tuoguanEventHandler);
+                tuoguanEventHandler = null;
+                debugLog('托管模式:已移除事件监听');
+            } catch (e) {
+                console.error('移除事件监听失败:', e);
+            }
         }
     }
 }
     
+    // 🔥 恢复保存的状态
     const savedAutoMode = localStorage.getItem(AUTO_MODE_KEY);
-    if (savedAutoMode === '1' && !autoObserver) {
+    if (savedAutoMode === '1') {
         toggleAutoMode(true);
     }
     
     const savedTuoguanMode = localStorage.getItem(TUOGUAN_MODE_KEY);
-    if (savedTuoguanMode === '1' && !tuoguanObserver) {
+    if (savedTuoguanMode === '1') {
         toggleTuoguanMode(true);
     }
     
+    // 🔥 更新按钮文本
     const autoBtn = document.getElementById('sp-gen-auto');
     const tuoguanBtn = document.getElementById('sp-gen-tuoguan');
     if (autoBtn) autoBtn.textContent = autoMode ? '自动化(运行中)' : '自动化';
@@ -1365,11 +1639,11 @@ function toggleTuoguanMode(forceState) {
         
         if (target.id === 'sp-gen-now') {
             try {    
-                debugLog('立刻生成：开始更新聊天记录...');
+                debugLog('立刻生成:开始更新聊天记录...');
                 await getLastMessages();
                 await new Promise(resolve => setTimeout(resolve, 100));
                 const cutted = await getLastMessages();
-                debugLog(`立刻生成：获取到 ${cutted.length} 条修剪后的消息`);
+                debugLog(`立刻生成:获取到 ${cutted.length} 条修剪后的消息`);
                 generateFriendCircle(cutted);
             } catch (e) {    
                 console.error('生成异常', e);    
@@ -1396,7 +1670,7 @@ function toggleTuoguanMode(forceState) {
             const oldRaw = lastAiMes.mes;
             const newContent = oldRaw + '\n' + texts;
             simulateEditMessage(aiMes, newContent);
-            debugLog('注入聊天成功,并模拟了编辑完成（可被其他脚本监听渲染）');
+            debugLog('注入聊天成功,并模拟了编辑完成(可被其他脚本监听渲染)');
         }
         
         else if (target.id === 'sp-gen-inject-swipe') {
@@ -1424,12 +1698,14 @@ function toggleTuoguanMode(forceState) {
     content.addEventListener('click', contentClickHandler);
 }
 
+
       // 面板按钮绑定
       panel.querySelectorAll('.sp-btn').forEach(btn => {
         btn.addEventListener('click', () => {
           const key = btn.dataset.key;
           if (key === 'api') showApiConfig();
           else if (key === 'prompt') showPromptConfig();
+          else if (key === 'random-prompt') showRandomPromptConfig(); // 🎲 新增
           else if (key === 'chat') showChatConfig();
           else if (key === 'worldbook') showWorldbookPanel();
           else if (key === 'gen') showGenPanel();
